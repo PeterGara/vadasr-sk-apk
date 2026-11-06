@@ -41,7 +41,7 @@ private const val TAG = "sherpa-onnx"
 private const val REQUEST_RECORD_AUDIO_PERMISSION = 200
 
 // Otvorena appka: PRAVIDLA (commands.txt) + KONFIG (config.txt) sa citaju za behu.
-// Akekolvek nove slovo\/akcia = uprava suboru + (hot reload) ziadny build.
+// Akekolvek nove slovo / akcia = uprava suboru + (hot reload) ziadny build.
 class MainActivity : AppCompatActivity() {
 
     private lateinit var recordButton: Button
@@ -98,7 +98,7 @@ class MainActivity : AppCompatActivity() {
             "cmd_max_words=4\n" +
             "# notifikacia: off | on_change | on_save\n" +
             "#   on_change = po kazdej zmene textu (s intervalom notify_interval_s)\n" +
-            "#   on_save   = len pri ULOZIT\/pošli (odporucane)\n" +
+            "#   on_save   = len pri ULOZIT / pošli (odporucane)\n" +
             "notify_mode=on_save\n" +
             "notify_interval_s=30\n" +
             "# popisky tlacidiel\n" +
@@ -190,7 +190,7 @@ class MainActivity : AppCompatActivity() {
                 Log.i(TAG, "config changed -> reload")
                 loadConfig(); loadCommands()
                 // prahy sa aplikuju pri dalsom starte nahravania (Vad vytvara novy)
-                withContext(Dispatchers.Main) { textView.append("\n[konfig načítaný]") }
+                runOnUiThread { textView.append("\n[konfig načítaný]") }
             }
         } catch (e: Exception) { }
     }
