@@ -45,8 +45,6 @@ private const val REQUEST_RECORD_AUDIO_PERMISSION = 200
 class MainActivity : AppCompatActivity() {
 
     private lateinit var recordButton: Button
-    private lateinit var saveButton: Button
-    private lateinit var undoButton: Button
     private lateinit var textView: TextView
     private lateinit var vad: Vad
     private var audioRecord: AudioRecord? = null
@@ -81,6 +79,60 @@ class MainActivity : AppCompatActivity() {
 
     @Volatile
     private var isRecording = false
+
+    // tlačidlo: id, label, akcia (rovnaký formát akcií ako commands.txt)
+    private data class BtnCfg(val label: String, val action: String)
+    private val buttonActions = HashMap<Int, BtnCfg>()
+    private var btnMtime = 0L
+    private val buttonIds = listOf(
+        R.id.btn_1, R.id.btn_2, R.id.btn_3, R.id.btn_4,
+        R.id.btn_5, R.id.btn_6, R.id.btn_7, R.id.btn_8
+    )
+    private val buttonViews = ArrayList<Button>()
+
+    private fun buttonsFile(): File = File(filesDirCfg(), "buttons.txt")
+
+    private fun writeDefaultButtons() {
+        buttonsFile().writeText(
+            "# === TLACIDLA: poradie 1-8 | popis | akcia ===\n" +
+            "# akcie: undo/paragraph/stop/save/stop_save/clear/notify/append:TEXT/shell:CMD/noop\n" +
+            "1|Späť|undo\n" +
+            "2|Uložiť|save\n" +
+            "3|Operitu|send_chat\n" +
+            "4|Odstavec|paragraph\n" +
+            "5|Vymaž|clear\n" +
+            "6|Notifikuj|notify\n" +
+            "7|B7|noop\n" +
+            "8|B8|noop\n",
+            Charsets.UTF_8
+        )
+    }
+
+    private fun loadButtons() {
+        try {
+            val f = buttonsFile()
+            if (!f.exists()) writeDefaultButtons()
+            btnMtime = f.lastModified()
+            buttonActions.clear()
+            f.readLines().forEach { line ->
+                val s = line.trim()
+                if (s.isEmpty() || s.startsWith("#")) return@forEach
+                val p = s.split('|', limit = 3)
+                if (p.size != 3) return@forEach
+                val n = p[0].trim().toIntOrNull() ?: return@forEach
+                if (n in 1..8) buttonActions[n] = BtnCfg(p[1].trim(), p[2].trim())
+            }
+            // aplikovat na views (ak existuju)
+            runOnUiThread {
+                buttonViews.forEachIndexed { i, v ->
+                    val cfg = buttonActions[i + 1]
+                    v.text = cfg?.label ?: "B${i + 1}"
+                    v.visibility = if (cfg == null) android.view.View.GONE else android.view.View.VISIBLE
+                }
+            }
+            Log.i(TAG, "buttons: ${buttonActions.size}")
+        } catch (e: Exception) { Log.e(TAG, "buttons err: $e") }
+    }
 
     // ---------------- súbory konfigu ----------------
     private fun filesDirCfg(): File = getExternalFilesDir(null) ?: filesDir
@@ -124,8 +176,9 @@ class MainActivity : AppCompatActivity() {
             "#   noop          = nic (len na vyskusanie zachytenia slova)\n" +
             "preč vetu|undo\n" +
             "nový odstavec|paragraph\n" +
-            "pošli|stop_save\n" +
+            "pošli|send_chat\n" +
             "vymaž všetko|clear\n" +
+            "ulož to|save\n" +
             "daj vedieť|notify\n",
             Charsets.UTF_8
         )
@@ -183,13 +236,13 @@ class MainActivity : AppCompatActivity() {
     // hot reload: kontroluje mtimes (lacne stat volania)
     private fun maybeReloadConfig() {
         try {
-            val c = configFile(); val d = commandsFile()
+            val c = configFile(); val d = commandsFile(); val b = buttonsFile()
             val cm = if (c.exists()) c.lastModified() else 0L
             val dm = if (d.exists()) d.lastModified() else 0L
-            if (cm != cfgMtime || dm != cmdMtime) {
+            val bm = if (b.exists()) b.lastModified() else 0L
+            if (cm != cfgMtime || dm != cmdMtime || bm != btnMtime) {
                 Log.i(TAG, "config changed -> reload")
-                loadConfig(); loadCommands()
-                // prahy sa aplikuju pri dalsom starte nahravania (Vad vytvara novy)
+                loadConfig(); loadCommands(); loadButtons()
                 runOnUiThread { textView.append("\n[konfig načítaný]") }
             }
         } catch (e: Exception) { }
@@ -269,6 +322,12 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread { render(); textView.append("\n[vymazané]") }
             }
             action == "notify" -> notifyIfNeeded(force = true)
+            action == "send_chat" -> {
+                // zastavi nahravanie a posle signál workflowu → text príde priamo do Operit chatu
+                runOnUiThread { if (isRecording) toggleRecord() }
+                sendSavedBroadcast()
+                textView.post { textView.append("\n[odoslané do Operitu]") }
+            }
             action == "noop" -> { }
             action.startsWith("append:") -> {
                 segments.add(action.removePrefix("append:")); persist()
@@ -338,12 +397,19 @@ class MainActivity : AppCompatActivity() {
         recordButton = findViewById(R.id.record_button)
         recordButton.isEnabled = false
         recordButton.setOnClickListener { toggleRecord() }
-        undoButton = findViewById(R.id.undo_button)
-        undoButton.text = cfgBtn2Label
-        undoButton.setOnClickListener { runAction("undo") }
-        saveButton = findViewById(R.id.save_button)
-        saveButton.text = cfgBtn3Label
-        saveButton.setOnClickListener { if (isRecording) toggleRecord(); doSave(notify = true) }
+
+        // 8 volnych tlacidiel
+        buttonViews.clear()
+        buttonIds.forEach { id ->
+            val v = findViewById<Button>(id)
+            buttonViews.add(v)
+            v.setOnClickListener {
+                val n = buttonIds.indexOf(id) + 1
+                val cfg = buttonActions[n]
+                if (cfg != null) runAction(cfg.action)
+            }
+        }
+        loadButtons()
 
         textView.text = "Inicializujem modely..."
         lifecycleScope.launch(Dispatchers.IO) {
