@@ -72,6 +72,171 @@ jobs:
           sed -i.bak 's/asrModelType = [0-9]*/asrModelType = 40/' $F
           grep -n 'asrModelType' $F
 
+      - name: Tune for noisy environments (VAD threshold + mic source)
+        working-directory: src
+        shell: bash
+        run: |
+          set -e
+          python3 - << 'PYEOF'
+          # 1) VAD threshold 0.5 -> 0.65 (tvrdsie filtrovanie sumu)
+          p = 'sherpa-onnx/kotlin-api/Vad.kt'
+          t = open(p).read()
+          n = t.count('threshold = 0.5F')
+          t = t.replace('threshold = 0.5F', 'threshold = 0.65F')
+          open(p, 'w').write(t)
+          print(f'Vad.kt: replaced {n} threshold occurrences')
+
+          # 2) MainActivity: MIC -> VOICE_RECOGNITION + NoiseSuppressor/AGC
+          p = 'android/SherpaOnnxVadAsr/app/src/main/java/com/k2fsa/sherpa/onnx/MainActivity.kt'
+          t = open(p).read()
+          assert 'MediaRecorder.AudioSource.MIC' in t, 'audioSource not found'
+          t = t.replace('MediaRecorder.AudioSource.MIC', 'MediaRecorder.AudioSource.VOICE_RECOGNITION')
+
+          old = """        )
+        return true
+    }
+    private fun processSamples()"""
+          new = """        )
+        // Turn on noise suppressor + AGC for noisy environments (outdoors/concerts)
+        try {
+            android.media.audiofx.NoiseSuppressor.create(audioRecord!!.audioSessionId)?.enabled = true
+            android.media.audiofx.AutomaticGainControl.create(audioRecord!!.audioSessionId)?.enabled = true
+        } catch (e: Exception) { }
+        return true
+    }
+    private fun processSamples()"""
+          if old not in t:
+              # fallback: hladaj bez presnej indentacie
+              import re
+              m = re.search(r'\)\s*\n\s*return true\s*\n\s*\}\s*\n\s*private fun processSamples', t)
+              assert m, 'initMicrophone anchor not found'
+              print('WARN: fallback regex anchor used')
+              t = t[:m.end()-len('private fun processSamples')] + new.split('private fun processSamples')[0].split('\n',1)[1].strip('\n') if False else t
+              # jednoduchsie: vloz len pred 'return true'
+              idx = t.find('numBytes * 2')
+              idx2 = t.find('return true', idx)
+              t = t[:idx2] + """// Turn on noise suppressor + AGC for noisy environments (outdoors/concerts)
+        try {
+            android.media.audiofx.NoiseSuppressor.create(audioRecord!!.audioSessionId)?.enabled = true
+            android.media.audiofx.AutomaticGainControl.create(audioRecord!!.audioSessionId)?.enabled = true
+        } catch (e: Exception) { }
+        """ + t[idx2:]
+          else:
+              t = t.replace(old, new, 1)
+          open(p, 'w').write(t)
+          print('MainActivity.kt: VOICE_RECOGNITION + NS/AGC applied')
+          PYEOF
+          echo '--- diff overenie:'
+          grep -n 'VOICE_RECOGNITION\|NoiseSuppressor\|threshold = 0.65' sherpa-onnx/kotlin-api/Vad.kt android/SherpaOnnxVadAsr/app/src/main/java/com/k2fsa/sherpa/onnx/MainActivity.kt
+
+      - name: Add foreground service + wake lock (headless dictation)
+        working-directory: src
+        shell: bash
+        run: |
+          set -e
+          python3 - << 'PYEOF'
+          import os
+
+          # 1) Vytvorit DiktatService.kt (foreground service + partial wake lock)
+          svc_path = 'android/SherpaOnnxVadAsr/app/src/main/java/com/k2fsa/sherpa/onnx/DiktatService.kt'
+          open(svc_path, 'w').write('''package com.k2fsa.sherpa.onnx.vad.asr
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
+import android.content.Intent
+import android.os.Build
+import android.os.IBinder
+import android.os.PowerManager
+
+class DiktatService : Service() {
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val channelId = "diktat"
+        if (Build.VERSION.SDK_INT >= 26) {
+            val nm = getSystemService(NotificationManager::class.java)
+            nm.createNotificationChannel(
+                NotificationChannel(channelId, "Diktovanie", NotificationManager.IMPORTANCE_LOW)
+            )
+        }
+        val builder = if (Build.VERSION.SDK_INT >= 26) {
+            Notification.Builder(this, channelId)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }
+        val notification = builder
+            .setSmallIcon(android.R.drawable.ic_btn_speak)
+            .setContentTitle("Diktovanie beží")
+            .setContentText("Mikrofón aktívny - text sa zapisuje")
+            .setOngoing(true)
+            .build()
+        startForeground(1, notification)
+
+        if (wakeLock == null) {
+            val pm = getSystemService(POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "skdiktat:wakelock").apply {
+                setReferenceCounted(false)
+                acquire(10 * 60 * 60 * 1000L)
+            }
+        }
+        return START_STICKY
+    }
+
+    override fun onDestroy() {
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
+        super.onDestroy()
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+}
+''')
+          print('DiktatService.kt written')
+
+          # 2) Manifest: povolenia + service
+          mp = 'android/SherpaOnnxVadAsr/app/src/main/AndroidManifest.xml'
+          m = open(mp).read()
+          perm_anchor = '<uses-permission android:name="android.permission.RECORD_AUDIO" />'
+          assert perm_anchor in m, 'manifest permission anchor missing'
+          m = m.replace(perm_anchor, perm_anchor + '''
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />''', 1)
+          svc_decl = '''        <service
+            android:name=".vad.asr.DiktatService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+    </application>'''
+          assert '</application>' in m, 'manifest application end missing'
+          m = m.replace('</application>', svc_decl, 1)
+          open(mp, 'w').write(m)
+          print('AndroidManifest.xml patched')
+
+          # 3) MainActivity: start/stop service spolu s nahravanim
+          fp = 'android/SherpaOnnxVadAsr/app/src/main/java/com/k2fsa/sherpa/onnx/MainActivity.kt'
+          t = open(fp).read()
+
+          old_start = 'audioRecord!!.startRecording()'
+          assert old_start in t, 'startRecording anchor missing'
+          t = t.replace(old_start, old_start + '''
+            val svc = android.content.Intent(this, DiktatService::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(svc) else startService(svc)''', 1)
+
+          old_stop = '''audioRecord!!.stop()
+            audioRecord!!.release()'''
+          assert old_stop in t, 'stop anchor missing'
+          t = t.replace(old_stop, '''stopService(android.content.Intent(this, DiktatService::class.java))
+            ''' + old_stop, 1)
+
+          open(fp, 'w').write(t)
+          print('MainActivity.kt patched (service start/stop)')
+          PYEOF
+          echo '--- overenie:'
+          grep -n 'DiktatService\|FOREGROUND_SERVICE\|WAKE_LOCK' android/SherpaOnnxVadAsr/app/src/main/AndroidManifest.xml android/SherpaOnnxVadAsr/app/src/main/java/com/k2fsa/sherpa/onnx/MainActivity.kt | head -12
+
       - name: Copy native libs to jniLibs
         working-directory: src
         shell: bash
