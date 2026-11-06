@@ -46,17 +46,22 @@ jobs:
         shell: bash
         run: |
           set -e
-          A=android/SherpaOnnxVadAsr/app/src/main/assets
-          mkdir -p $A/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8
-          cd $A/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8
+          A=$PWD/android/SherpaOnnxVadAsr/app/src/main/assets
+          D=$A/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8
+          mkdir -p $D
           BASE=https://huggingface.co/vibeide-dev/parakeet-tdt-0.6b-v3-sk-sherpa-onnx-int8/resolve/main
           for f in encoder.int8.onnx decoder.int8.onnx joiner.int8.onnx tokens.txt; do
-            curl -SL --retry 3 -o $f $BASE/$f
+            echo "downloading $f"
+            curl -SL --retry 3 -o $D/$f $BASE/$f
           done
-          ls -lh
-          cd $A
-          curl -SL --retry 3 -O https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
-          ls -lh silero_vad.onnx
+          ls -lh $D
+          echo "downloading silero_vad.onnx"
+          curl -SL --retry 3 -o $A/silero_vad.onnx https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
+          ls -lh $A/silero_vad.onnx
+          # overenie: model musi mat ~650MB
+          SZ=$(stat -c%s $D/encoder.int8.onnx)
+          if [ "$SZ" -lt 650000000 ]; then echo "CHYBA: encoder len $SZ bajtov"; exit 1; fi
+          echo "encoder OK: $SZ"
 
       - name: Set asrModelType=40
         working-directory: src
