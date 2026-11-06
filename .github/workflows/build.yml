@@ -55,7 +55,7 @@ jobs:
           cp -v ovr/overrides/DiktatService.kt $A/java/com/k2fsa/sherpa/onnx/DiktatService.kt
           cp -v ovr/overrides/activity_main.xml $A/res/layout/activity_main.xml
           cp -v ovr/overrides/AndroidManifest.xml $A/AndroidManifest.xml
-          grep -c 'asrModelType = 40' $A/java/com/k2fsa/sherpa/onnx/MainActivity.kt
+          grep -c 'type = 40' $A/java/com/k2fsa/sherpa/onnx/MainActivity.kt
           grep -c 'DiktatService' $A/AndroidManifest.xml
 
       - name: Insert SK Parakeet model into assets
