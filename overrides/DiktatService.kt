@@ -28,7 +28,7 @@ class DiktatService : Service() {
             Notification.Builder(this)
         }
         val notification = builder
-            .setSmallIcon(android.R.drawable.ic_menu_myvoice)
+            .setSmallIcon(com.k2fsa.sherpa.onnx.R.mipmap.ic_launcher)
             .setContentTitle("Diktovanie beží")
             .setContentText("Mikrofón aktívny - text sa zapisuje")
             .setOngoing(true)
