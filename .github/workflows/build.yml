@@ -1,0 +1,118 @@
+name: build-sk-vad-asr-apk
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+concurrency:
+  group: sk-apk
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout sherpa-onnx
+        uses: actions/checkout@v4
+        with:
+          repository: k2-fsa/sherpa-onnx
+          path: src
+          fetch-depth: 1
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Display NDK
+        shell: bash
+        run: echo "NDK=${ANDROID_NDK_LATEST_HOME}" && ls -d ${ANDROID_NDK_LATEST_HOME}
+
+      - name: Build native libs (arm64-v8a)
+        working-directory: src
+        shell: bash
+        run: |
+          export ANDROID_NDK=$ANDROID_NDK_LATEST_HOME
+          cmake --version
+          ./build-android-arm64-v8a.sh
+
+      - name: Insert SK Parakeet model into assets
+        working-directory: src
+        shell: bash
+        run: |
+          set -e
+          A=android/SherpaOnnxVadAsr/app/src/main/assets
+          mkdir -p $A/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8
+          cd $A/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8
+          BASE=https://huggingface.co/vibeide-dev/parakeet-tdt-0.6b-v3-sk-sherpa-onnx-int8/resolve/main
+          for f in encoder.int8.onnx decoder.int8.onnx joiner.int8.onnx tokens.txt; do
+            curl -SL --retry 3 -o $f $BASE/$f
+          done
+          ls -lh
+          cd $A
+          curl -SL --retry 3 -O https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
+          ls -lh silero_vad.onnx
+
+      - name: Set asrModelType=40
+        working-directory: src
+        shell: bash
+        run: |
+          set -e
+          F=android/SherpaOnnxVadAsr/app/src/main/java/com/k2fsa/sherpa/onnx/MainActivity.kt
+          sed -i.bak 's/asrModelType = [0-9]*/asrModelType = 40/' $F
+          grep -n 'asrModelType' $F
+
+      - name: Copy native libs to jniLibs
+        working-directory: src
+        shell: bash
+        run: |
+          set -e
+          ls -lh build-android-arm64-v8a/install/lib/*.so
+          cp -v build-android-arm64-v8a/install/lib/*.so android/SherpaOnnxVadAsr/app/src/main/jniLibs/arm64-v8a/
+
+      - name: Gradle assembleRelease
+        working-directory: src/android/SherpaOnnxVadAsr
+        shell: bash
+        run: |
+          set -e
+          sed -i.bak 's/2048/9012/g' gradle.properties
+          ./gradlew assembleRelease --no-daemon
+
+      - uses: actions/cache@v4
+        with:
+          path: keystore.jks
+          key: sk-keystore-v1
+          restore-keys: sk-keystore-
+
+      - name: Sign APK
+        shell: bash
+        run: |
+          set -e
+          if [ ! -f keystore.jks ]; then
+            keytool -genkeypair -keystore keystore.jks -alias sk -keyalg RSA \
+              -keysize 2048 -validity 10000 -storepass skpass123 -keypass skpass123 \
+              -dname "CN=PeterGara, OU=SK, O=Personal, C=SK"
+          fi
+          BT=$(ls /usr/local/lib/android/sdk/build-tools/ | tail -n 1)
+          APK=$(find src/android/SherpaOnnxVadAsr/app/build/outputs/apk/release -name '*.apk' | head -1)
+          echo "signing $APK with build-tools $BT"
+          /usr/local/lib/android/sdk/build-tools/$BT/zipalign -f 4 "$APK" aligned.apk
+          /usr/local/lib/android/sdk/build-tools/$BT/apksigner sign \
+            --ks keystore.jks --ks-key-alias sk \
+            --ks-pass pass:skpass123 --key-pass pass:skpass123 \
+            --out sk-vad-asr.apk aligned.apk
+          /usr/local/lib/android/sdk/build-tools/$BT/apksigner verify -v sk-vad-asr.apk | head -5
+          ls -lh sk-vad-asr.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sk-vad-asr-apk
+          path: sk-vad-asr.apk
+          if-no-files-found: error
+          retention-days: 90
