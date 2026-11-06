@@ -109,7 +109,6 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 Log.i(TAG, "config loaded: threshold=$cfgThreshold minSilence=$cfgMinSilence")
-            }
         } catch (e: Exception) {
             Log.e(TAG, "config load failed: $e")
         }
