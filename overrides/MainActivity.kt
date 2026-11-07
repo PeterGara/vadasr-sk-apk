@@ -38,6 +38,9 @@ import kotlin.concurrent.thread
 import androidx.lifecycle.lifecycleScope
 import java.io.File
 import java.io.FileOutputStream
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.ArrayDeque
 import java.util.Date
@@ -46,12 +49,8 @@ import java.util.Locale
 private const val TAG = "sherpa-onnx"
 private const val REQUEST_RECORD_AUDIO_PERMISSION = 200
 
-// Otvorena appka: PRAVIDLA (commands.txt) + KONFIG (config.txt) + TLACIDLA (buttons.txt)
-// sa citaju za behu. Akekolvek nove slovo / akcia = uprava suboru (hot reload) = ziadny build.
-//
-// DOLEZITE (v2): akcia "send_chat" teraz OKREM zapisu SENDME.txt posle aj broadcast
-// com.ai.assistance.operit.TRIGGER_WORKFLOW priamo Operitovi. To je manifest prijimac,
-// takze Operit sa ZOBUDI aj ked spal/zamrzol -> diktat dorazi vzdy, nie len ked je online.
+// v3: send_chat posle text PRIAMO do Operitu cez lokalne HTTP API (127.0.0.1:8094).
+// Obide blokovanie broadcastov, zmrazovanie aj plavajuce okno.
 class MainActivity : AppCompatActivity() {
 
     private lateinit var recordButton: Button
@@ -67,25 +66,22 @@ class MainActivity : AppCompatActivity() {
     private val permissions: Array<String> = arrayOf(Manifest.permission.RECORD_AUDIO)
     private lateinit var offlineRecognizer: OfflineRecognizer
 
-    // session
     private var sessionFile: File? = null
     private val segments = ArrayList<String>()
 
-    // undo/redo historia
     private val undoStack = ArrayDeque<String>()
     private val redoStack = ArrayDeque<String>()
 
-    // ---------- KONFIG (config.txt) ----------
     private var cfgThreshold = 0.5f
     private var cfgMinSilence = 0.4f
     private var cfgCmdMaxWords = 4
     private var cfgNotifyMode = "on_save"
     private var cfgNotifyIntervalS = 30
     private var cfgKeepScreenOn = true
-    private var cfgOperitPackage = "com.ai.assistance.operit"
-    private var cfgWorkflowId = "38245eb0-2995-4034-9ec5-e5bd186f32ea"
+    private var cfgHttpPort = 8094
+    private var cfgHttpToken = ""
+    private var cfgChatId = "e2b301b9-aba0-4d0b-805f-49bdbac6c406"
 
-    // ---------- PRAVIDLA (commands.txt): fraza | akcia ----------
     private data class Rule(val phrase: String, val action: String)
     private var rules = listOf<Rule>()
     private var cfgMtime = 0L
@@ -96,7 +92,6 @@ class MainActivity : AppCompatActivity() {
     @Volatile
     private var isRecording = false
 
-    // tlacidlo: id, label, akcia
     private data class BtnCfg(val label: String, val action: String)
     private val buttonActions = HashMap<Int, BtnCfg>()
     private var btnMtime = 0L
@@ -112,8 +107,6 @@ class MainActivity : AppCompatActivity() {
     private fun writeDefaultButtons() {
         buttonsFile().writeText(
             "# === TLACIDLA: poradie 1-12 | popis | akcia ===\n" +
-            "# akcie: undo/redo/paragraph/stop/save/save_public/clear/notify/send_chat/\n" +
-            "#         copy/share/time/append:TEXT/shell:CMD/noop\n" +
             "1|\u2190 Spat|undo\n" +
             "2|\u2192 Znova|redo\n" +
             "3|\u2709 Operit|send_chat\n" +
@@ -122,7 +115,7 @@ class MainActivity : AppCompatActivity() {
             "6|Kopir.|copy\n" +
             "7|Zdiel.|share\n" +
             "8|Cas|time\n" +
-            "9|Uloz PDF|save_public\n" +
+            "9|Uloz TXT|save_public\n" +
             "10|Vymaz|clear\n" +
             "11|Notif.|notify\n" +
             "12|Stop|stop\n",
@@ -151,26 +144,26 @@ class MainActivity : AppCompatActivity() {
                     v.visibility = if (cfg == null) android.view.View.GONE else android.view.View.VISIBLE
                 }
             }
-            Log.i(TAG, "buttons: ${buttonActions.size}")
         } catch (e: Exception) { Log.e(TAG, "buttons err: $e") }
     }
 
-    // ---------------- subory konfigu ----------------
     private fun filesDirCfg(): File = getExternalFilesDir(null) ?: filesDir
     private fun configFile(): File = File(filesDirCfg(), "config.txt")
     private fun commandsFile(): File = File(filesDirCfg(), "commands.txt")
 
     private fun writeDefaultConfig() {
         configFile().writeText(
-            "# === KONFIG (hladany pri starte a pri zmene suboru - BEZ buildu) ===\n" +
+            "# === KONFIG ===\n" +
             "threshold=0.5\n" +
             "min_silence=0.4\n" +
             "cmd_max_words=4\n" +
             "notify_mode=on_save\n" +
             "notify_interval_s=30\n" +
             "keep_screen_on=true\n" +
-            "operit_package=com.ai.assistance.operit\n" +
-            "workflow_id=38245eb0-2995-4034-9ec5-e5bd186f32ea\n",
+            "# Operit HTTP API (External HTTP Calls -> Service ON)\n" +
+            "http_port=8094\n" +
+            "http_token=SEM_VLOZ_TOKEN\n" +
+            "chat_id=e2b301b9-aba0-4d0b-805f-49bdbac6c406\n",
             Charsets.UTF_8
         )
     }
@@ -220,11 +213,11 @@ class MainActivity : AppCompatActivity() {
                     "notify_mode" -> cfgNotifyMode = v
                     "notify_interval_s" -> cfgNotifyIntervalS = v.toIntOrNull() ?: cfgNotifyIntervalS
                     "keep_screen_on" -> cfgKeepScreenOn = v.equals("true", true)
-                    "operit_package" -> cfgOperitPackage = v
-                    "workflow_id" -> cfgWorkflowId = v
+                    "http_port" -> cfgHttpPort = v.toIntOrNull() ?: cfgHttpPort
+                    "http_token" -> cfgHttpToken = v
+                    "chat_id" -> cfgChatId = v
                 }
             }
-            Log.i(TAG, "config: th=$cfgThreshold sil=$cfgMinSilence notify=$cfgNotifyMode")
         } catch (e: Exception) { Log.e(TAG, "config err: $e") }
     }
 
@@ -240,7 +233,6 @@ class MainActivity : AppCompatActivity() {
                 if (p.size != 2) return@mapNotNull null
                 Rule(p[0].trim(), p[1].trim())
             }.sortedByDescending { it.phrase.length }
-            Log.i(TAG, "rules: ${rules.size}")
         } catch (e: Exception) { Log.e(TAG, "commands err: $e") }
     }
 
@@ -340,8 +332,7 @@ class MainActivity : AppCompatActivity() {
             action == "undo" -> doUndo()
             action == "redo" -> doRedo()
             action == "paragraph" -> {
-                pushHistory()
-                segments.add(""); persist()
+                pushHistory(); segments.add(""); persist()
                 runOnUiThread { render(); updateStatus() }
             }
             action == "stop" -> runOnUiThread { if (isRecording) toggleRecord() }
@@ -369,7 +360,6 @@ class MainActivity : AppCompatActivity() {
                 try {
                     ProcessBuilder("sh", "-c", action.removePrefix("shell:"))
                         .redirectErrorStream(true).start().inputStream.bufferedReader().readText()
-                    Log.i(TAG, "shell ok: ${action.take(60)}")
                 } catch (e: Exception) { Log.e(TAG, "shell err: $e") }
             }
         }
@@ -394,44 +384,63 @@ class MainActivity : AppCompatActivity() {
         notifyIfNeeded(force = false)
     }
 
-    // ---------------- KLUCOVA FUNKCIA: posli do Operitu + ZOBUD ho ----------------
     private fun sendToOperit() {
         runOnUiThread { if (isRecording) toggleRecord() }
-        try {
-            val dir = diktatDir()
-            var p = sessionFile?.absolutePath
-            if (p == null || !File(p).exists()) {
-                p = dir.listFiles()?.maxByOrNull { it.lastModified() }?.absolutePath
+        val text = segments.joinToString("\n")
+        thread(true) {
+            val ok = httpSend(text)
+            runOnUiThread {
+                textView.post {
+                    textView.append(if (ok) "\n[odoslane do Operitu \u2713]" else "\n[CHYBA: token/port?]")
+                }
+                Toast.makeText(this, if (ok) "Poslane do Operitu" else "Odoslanie zlyhalo", Toast.LENGTH_SHORT).show()
             }
-            if (p != null) File(dir, "SENDME.txt").writeText(p)
-        } catch (e: Exception) { Log.e(TAG, "flag err: $e") }
-
-        sendSavedBroadcast()
-        triggerOperitWorkflow()
-
-        runOnUiThread {
-            textView.post { textView.append("\n[odosielam do Operitu...]") }
-            Toast.makeText(this, "Poslane do Operitu", Toast.LENGTH_SHORT).show()
         }
-        Log.i(TAG, "send_chat -> operit")
     }
 
-    private fun triggerOperitWorkflow() {
+    private fun httpSend(message: String): Boolean {
         try {
-            val i = Intent("com.ai.assistance.operit.TRIGGER_WORKFLOW")
-            i.setPackage(cfgOperitPackage)
-            i.putExtra("workflowId", cfgWorkflowId)
-            i.putExtra("workflow_id", cfgWorkflowId)
-            i.putExtra("id", cfgWorkflowId)
-            sendBroadcast(i)
-        } catch (e: Exception) { Log.e(TAG, "trigger operit err: $e") }
+            if (cfgHttpToken.isBlank() || cfgHttpToken == "SEM_VLOZ_TOKEN") {
+                Log.e(TAG, "http_token nie je nastaveny")
+                return false
+            }
+            val json = "{\"message\":\"" + esc(message) + "\"," +
+                    "\"response_mode\":\"sync\"," +
+                    "\"show_floating\":false," +
+                    "\"return_tool_status\":false," +
+                    "\"chat_id\":\"" + esc(cfgChatId) + "\"}"
+            val url = URL("http://127.0.0.1:" + cfgHttpPort + "/api/external-chat")
+            val c = url.openConnection() as HttpURLConnection
+            c.requestMethod = "POST"
+            c.doOutput = true
+            c.connectTimeout = 8000
+            c.readTimeout = 180000
+            c.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            c.setRequestProperty("Authorization", "Bearer " + cfgHttpToken)
+            OutputStreamWriter(c.outputStream, Charsets.UTF_8).use { it.write(json) }
+            val code = c.responseCode
+            Log.i(TAG, "HTTP external-chat -> $code")
+            c.disconnect()
+            return code in 200..299
+        } catch (e: Exception) {
+            Log.e(TAG, "httpSend err: $e")
+            return false
+        }
     }
 
-    private fun sendSavedBroadcast() {
-        try {
-            sendBroadcast(Intent("com.k2fsa.sherpa.onnx.DIKTAT_SAVED")
-                .putExtra("path", sessionFile?.absolutePath ?: ""))
-        } catch (e: Exception) { }
+    private fun esc(s: String): String {
+        val sb = StringBuilder()
+        for (ch in s) {
+            when (ch) {
+                '\\' -> sb.append("\\\\")
+                '"' -> sb.append("\\\"")
+                '\n' -> sb.append("\\n")
+                '\r' -> sb.append("\\r")
+                '\t' -> sb.append("\\t")
+                else -> if (ch < ' ') sb.append(' ') else sb.append(ch)
+            }
+        }
+        return sb.toString()
     }
 
     private fun doCopy() {
@@ -460,7 +469,6 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread { textView.append("\n[Nie je co ulozit]") }; return
         }
         if (notify) notifyText("Diktat ulozeny", segments.joinToString("\n"))
-        sendSavedBroadcast()
         runOnUiThread { textView.append("\n[Ulozene: ${f.name}]") }
     }
 
@@ -475,10 +483,7 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Ulozene do Documents/Diktat", Toast.LENGTH_LONG).show()
                 textView.append("\n[Ulozene: ${out.absolutePath}]")
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "save_public err: $e")
-            runOnUiThread { Toast.makeText(this, "Ulozenie zlyhalo: $e", Toast.LENGTH_LONG).show() }
-        }
+        } catch (e: Exception) { Log.e(TAG, "save_public err: $e") }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
@@ -588,9 +593,7 @@ class MainActivity : AppCompatActivity() {
                     vad.pop()
                 }
             }
-            if (++tick % 20 == 0) {
-                scope.launch { maybeReloadConfig() }
-            }
+            if (++tick % 20 == 0) { scope.launch { maybeReloadConfig() } }
         }
         scope.cancel()
     }
