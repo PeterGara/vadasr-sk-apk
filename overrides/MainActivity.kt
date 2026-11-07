@@ -430,6 +430,7 @@ class MainActivity : AppCompatActivity() {
                 segments.add("[" + SimpleDateFormat("HH:mm", Locale.US).format(Date()) + "]")
                 persist(); runOnUiThread { render(); updateStatus() }
             }
+            action == "paste_app" -> doPasteToApp()
             action == "noop" -> { }
             action.startsWith("beep:") -> {
                 val n = action.removePrefix("beep:").trim().toIntOrNull() ?: 1
@@ -535,6 +536,17 @@ class MainActivity : AppCompatActivity() {
         return sb.toString()
     }
 
+    /** vlozi text do aktivnej appky (cez accessibility) */
+    private fun doPasteToApp() {
+        val text = segments.joinToString("\n")
+        if (text.isBlank()) { beep(2); return }
+        val ok = SpeakAccessibilityService.instance?.pasteText(text) ?: false
+        beep(if (ok) 1 else 2)
+        runOnUiThread {
+            Toast.makeText(this, if (ok) "Vlozene do aktivnej appky" else "Accessibility nie je zapnuta", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun doCopy() {
         try {
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -585,7 +597,7 @@ class MainActivity : AppCompatActivity() {
     private fun showMenu() {
         val items = arrayOf("Poslat NOVE do Operitu", "Poslat VSETKO do Operitu",
             "Zmazat vetu", "Zmazat odstavec", "Zmazat vsetko",
-            "Spat (undo)", "Znova (redo)", "Ulozit TXT", "Kopirovat", "Zdielat", "Notifikacia")
+            "Spat (undo)", "Znova (redo)", "Ulozit TXT", "Kopirovat", "Zdielat", "Notifikacia", "Vlozit do appky")
         AlertDialog.Builder(this).setTitle("Menu").setItems(items) { _, i -> when (i) {
             0 -> sendToOperit(false)
             1 -> sendToOperit(true)
@@ -598,6 +610,7 @@ class MainActivity : AppCompatActivity() {
             8 -> doCopy()
             9 -> doShare()
             10 -> notifyIfNeeded(force = true)
+            11 -> doPasteToApp()
         } }.show()
     }
 
