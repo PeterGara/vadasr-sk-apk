@@ -5,6 +5,7 @@ import android.text.InputType
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import com.k2fsa.sherpa.onnx.R
 
 class SettingsActivity : AppCompatActivity() {
@@ -56,7 +57,7 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btn_back).setOnClickListener { finish() }
         findViewById<Button>(R.id.btn_dlmlkit).setOnClickListener {
             val from = langVals[langSp.selectedItemPosition]
-            val to = targetSp.selectedItem.text.toString().lowercase()
+            val to = targetSp.selectedItem.toString().lowercase()
             Toast.makeText(this, "Stahujem ML Kit model $from->$to ...", Toast.LENGTH_LONG).show()
             lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                 val ok = Translate.downloadMlkit(from, to)
@@ -67,7 +68,7 @@ class SettingsActivity : AppCompatActivity() {
             Settings.asrLang = langVals[langSp.selectedItemPosition]
             Settings.asrModelDir = asrDirEd.text.toString()
             Settings.translateEngine = if (engineSp.selectedItemPosition == 1) "gguf" else "mlkit"
-            Settings.translateTarget = targetSp.selectedItem.text.toString().uppercase()
+            Settings.translateTarget = targetSp.selectedItem.toString().uppercase()
             Settings.operitEnabled = operitSw.isChecked
             Settings.operitPort = portEd.text.toString().ifBlank { "8094" }
             Settings.operitToken = tokenEd.text.toString()
