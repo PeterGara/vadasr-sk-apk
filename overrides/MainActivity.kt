@@ -217,7 +217,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        loadButtons()
+        loadCommands(); loadButtons()
         setMode(MODE_TRANS)
         startWatchdog()
 
@@ -797,7 +797,120 @@ class MainActivity : AppCompatActivity() {
         "transcribe_file" -> pickAudioForTranscribe()
         "trim_audio" -> pickAudioForTrim()
         "records" -> setMode(MODE_RECORDS)
-        else -> {}
+        "stop", "stop_record", "stop_nahravanie" -> stopRecording()
+        "start", "start_record" -> startRecording()
+        "paragraph" -> { val cur = txt(); setTxt(if (cur.isBlank()) cur else cur + "\n") }
+        "undo" -> doUndo()
+        "time" -> toast(SimpleDateFormat("HH:mm:ss", Locale.US).format(Date()))
+        "noop" -> {}
+        "beep" -> beep(1)
+        else -> {
+            if (action.startsWith("beep:")) beep(action.substringAfter("beep:").toIntOrNull() ?: 1)
+            else if (action.startsWith("append:")) { val cur = txt(); setTxt(cur + action.substringAfter("append:")) }
+        }
+    }
+
+    // ---------------- hlasove prikazy (commands.txt) ----------------
+    private fun norm(s: String): String {
+        val sb = StringBuilder()
+        for (ch in s.lowercase()) {
+            val r = when (ch) {
+                'á','à','â','ä' -> 'a'; 'é','è','ê','ë' -> 'e'; 'í','ì','î','ï' -> 'i'
+                'ó','ò','ô','ö' -> 'o'; 'ú','ù','û','ü' -> 'u'; 'ý','ÿ' -> 'y'
+                'č' -> 'c'; 'š' -> 's'; 'ž' -> 'z'; 'ť' -> 't'; 'ď' -> 'd'; 'ň' -> 'n'; 'ľ','ĺ' -> 'l'
+                'ř' -> 'r'; 'ě' -> 'e'; 'ů' -> 'u'
+                else -> ch
+            }
+            if (r.isLetterOrDigit() || r == ' ') sb.append(r)
+        }
+        return sb.toString().trim().replace(Regex(" +"), " ")
+    }
+
+    /** Skusi najst hlasovy prikaz na konci rozpoznaneho textu. Vrati akciu alebo null. */
+    private fun matchVoiceCommand(text: String): String? {
+        val f = commandsFile()
+        if (!f.exists()) return null
+        val t = norm(text)
+        if (t.isBlank()) return null
+        var best: String? = null
+        var bestLen = 0
+        try {
+            f.readLines().forEach { line ->
+                val s = line.trim()
+                if (s.isEmpty() || s.startsWith("#")) return@forEach
+                val p = s.split('|', limit = 2)
+                if (p.size != 2) return@forEach
+                val phrase = norm(p[0])
+                val action = p[1].trim()
+                if (phrase.isBlank()) return@forEach
+                // musi byt na konci textu (moze mat bodku za sebou)
+                val tt = t.trimEnd('.', '!', '?', ',', ' ')
+                if (tt == phrase || tt.endsWith(" " + phrase)) {
+                    if (phrase.length > bestLen) { bestLen = phrase.length; best = action }
+                }
+            }
+        } catch (e: Exception) { Log.e(TAG, "cmd err: $e") }
+        return best
+    }
+
+    /** Odstrani prikaz z konca textu (aby sa neukladal do prepisu). */
+    private fun stripCommand(text: String, action: String): String {
+        val f = commandsFile()
+        if (!f.exists()) return text
+        var out = text
+        try {
+            f.readLines().forEach { line ->
+                val s = line.trim()
+                if (s.isEmpty() || s.startsWith("#")) return@forEach
+                val p = s.split('|', limit = 2)
+                if (p.size != 2) return@forEach
+                if (p[1].trim() != action) return@forEach
+                val phrase = p[0].trim()
+                val re = Regex("(?i)\\s*" + Regex.escape(phrase) + "\\s*[.!?,]*\\s*$")
+                out = out.replace(re, "")
+            }
+        } catch (e: Exception) {}
+        return out.trimEnd()
+    }
+
+    private fun commandsFile(): File = File(getExternalFilesDir(null) ?: filesDir, "commands.txt")
+
+    private fun loadCommands() {
+        try {
+            val f = commandsFile()
+            if (!f.exists()) f.writeText(
+                "# hlasove prikazy: fraza | akcia (bez diakritiky)\n" +
+                "zastav nahravanie|stop\n" +
+                "stopni nahravanie|stop\n" +
+                "stop nahravanie|stop\n" +
+                "zastav to|stop\n" +
+                "stopni to|stop\n" +
+                "ukonci nahravanie|stop\n" +
+                "skonci nahravanie|stop\n" +
+                "stop|stop\n" +
+                "zmaz vetu|del_veta\n" +
+                "zmaz odstavec|del_odstavec\n" +
+                "vymaz vsetko|clear\n" +
+                "posli|send_new\n" +
+                "posli do operitu|send_new\n" +
+                "skopiruj|copy\n" +
+                "uloz|save\n" +
+                "vloz do appky|paste_app\n" +
+                "novy odstavec|paragraph\n" +
+                "spat|undo\n", Charsets.UTF_8)
+        } catch (e: Exception) {}
+    }
+
+    private fun startRecording() {
+        if (!isRecording) toggleRecord()
+    }
+
+    private fun stopRecording() {
+        if (isRecording) {
+            toggleRecord()
+            beepFor("stop")
+            toast("Nahravanie zastavene")
+        }
     }
 
     // ---------------- nahravanie ----------------
@@ -918,10 +1031,25 @@ class MainActivity : AppCompatActivity() {
                     val seg = vad.front()
                     scope.launch {
                         val t = runRecognizer2(seg.samples)
-                        if (t.isNotBlank()) runOnUiThread {
-                            val cur = txt()
-                            setTxt(if (cur.isBlank()) t else cur + "\n" + t)
-                            updateStatus(); persist()
+                        if (t.isNotBlank()) {
+                            val cmd = matchVoiceCommand(t)
+                            if (cmd != null) {
+                                val clean = stripCommand(t, cmd)
+                                runOnUiThread {
+                                    if (clean.isNotBlank()) {
+                                        val cur = txt()
+                                        setTxt(if (cur.isBlank()) clean else cur + "\n" + clean)
+                                    }
+                                    updateStatus(); persist()
+                                    runAction(cmd)
+                                }
+                            } else {
+                                runOnUiThread {
+                                    val cur = txt()
+                                    setTxt(if (cur.isBlank()) t else cur + "\n" + t)
+                                    updateStatus(); persist()
+                                }
+                            }
                         }
                     }
                     vad.pop()
@@ -947,7 +1075,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         Settings.init(getExternalFilesDir(null) ?: filesDir)
-        setMode(mode); loadButtons()
+        setMode(mode); loadCommands(); loadButtons()
         lifecycleScope.launch(Dispatchers.IO) { initAsr() }
     }
 
