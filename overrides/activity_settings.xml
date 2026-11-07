@@ -2,7 +2,7 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#12141A">
+    android:background="#0F1319">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -16,13 +16,26 @@
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:layout_marginTop="18dp" android:text="Jazyk prepisu" android:textColor="#8A93A6" />
         <Spinner android:id="@+id/sp_lang" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:background="#1B1F29" />
+            android:background="@drawable/card" />
+
+        <!-- CITLIVOST / VAD -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_marginTop="18dp" android:text="Citlivosť (VAD prah 0.10 - 0.90)" android:textColor="#8A93A6" />
+        <SeekBar android:id="@+id/sb_threshold" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:max="80" android:progress="40" />
+        <TextView android:id="@+id/tv_threshold" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="0.50" android:textColor="#E8ECF5" android:textSize="12sp" />
 
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:layout_marginTop="8dp" android:text="Priečinok pre externé ASR modely (/lang/)" android:textColor="#8A93A6" />
-        <EditText android:id="@+id/ed_asrdir" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:background="#1B1F29" android:hint="/sdcard/Download/Speak-o/models/asr"
-            android:inputType="textUri" android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
+            android:layout_marginTop="10dp" android:text="Minimálne ticho na ukončenie vety (s)" android:textColor="#8A93A6" />
+        <EditText android:id="@+id/ed_minsilence" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:background="@drawable/card" android:hint="0.4" android:inputType="numberDecimal"
+            android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
+
+        <Switch android:id="@+id/sw_noise" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="14dp" android:text="Potlačenie hluku" android:textColor="#FFFFFF" />
+        <Switch android:id="@+id/sw_agc" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Zosilnenie hlasu (AGC)" android:textColor="#FFFFFF" />
 
         <!-- PREKLAD -->
         <Switch android:id="@+id/sw_translate" android:layout_width="match_parent" android:layout_height="wrap_content"
@@ -31,24 +44,30 @@
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:text="Engine prekladu" android:textColor="#8A93A6" />
         <Spinner android:id="@+id/sp_engine" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:background="#1B1F29" />
+            android:background="@drawable/card" />
 
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:text="Cielovy jazyk" android:textColor="#8A93A6" />
         <Spinner android:id="@+id/sp_target" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:background="#1B1F29" />
+            android:background="@drawable/card" />
 
         <Button android:id="@+id/btn_dlmlkit" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:backgroundTint="#2563A6" android:text="Stiahnuť ML Kit model (offline)"
+            android:background="@drawable/btn_primary" android:text="Stiahnuť ML Kit model (offline)"
             android:textColor="#FFFFFF" />
 
         <EditText android:id="@+id/ed_transurl" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:layout_marginTop="6dp" android:background="#1B1F29"
+            android:layout_marginTop="6dp" android:background="@drawable/card"
             android:hint="GGUF: server URL" android:inputType="textUri"
             android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
         <EditText android:id="@+id/ed_transmodel" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:background="#1B1F29" android:hint="GGUF: nazov modelu"
+            android:background="@drawable/card" android:hint="GGUF: nazov modelu"
             android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
+
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" android:text="Priečinok pre externé ASR modely (/lang/)" android:textColor="#8A93A6" />
+        <EditText android:id="@+id/ed_asrdir" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:background="@drawable/card" android:hint="/sdcard/Download/Speak-o/models/asr"
+            android:inputType="textUri" android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
 
         <!-- PIPANIE -->
         <Switch android:id="@+id/sw_beep" android:layout_width="match_parent" android:layout_height="wrap_content"
@@ -58,18 +77,18 @@
         <Switch android:id="@+id/sw_operit" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="18dp" android:text="Posielat do Operitu" android:textColor="#FFFFFF" />
         <EditText android:id="@+id/ed_port" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:background="#1B1F29" android:hint="Operit port (8094)" android:inputType="number"
+            android:background="@drawable/card" android:hint="Operit port (8094)" android:inputType="number"
             android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
         <EditText android:id="@+id/ed_token" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:background="#1B1F29" android:hint="Operit token"
+            android:background="@drawable/card" android:hint="Operit token"
             android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
         <EditText android:id="@+id/ed_chat" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:background="#1B1F29" android:hint="Operit chat_id"
+            android:background="@drawable/card" android:hint="Operit chat_id"
             android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
 
         <Button android:id="@+id/btn_save" android:layout_width="match_parent" android:layout_height="54dp"
-            android:layout_marginTop="24dp" android:backgroundTint="#2E7D5B" android:text="ULOZIT" android:textColor="#FFFFFF" />
+            android:layout_marginTop="24dp" android:background="@drawable/mic_on" android:text="ULOŽIŤ" android:textColor="#FFFFFF" />
         <Button android:id="@+id/btn_back" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="Spat" android:textColor="#E8ECF5" android:backgroundTint="#333B4D" />
+            android:layout_marginTop="6dp" android:text="Späť" android:textColor="#E8ECF5" android:background="@drawable/btn_neutral" />
     </LinearLayout>
 </ScrollView>
