@@ -28,6 +28,11 @@
             </intent-filter>
             <meta-data android:name="android.app.lib_name" android:value="" />
         </activity>
+        <activity
+            android:name=".vad.asr.SettingsActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
+            android:exported="false"
+            android:label="Nastavenia" />
         <service
             android:name=".vad.asr.DiktatService"
             android:exported="false"
