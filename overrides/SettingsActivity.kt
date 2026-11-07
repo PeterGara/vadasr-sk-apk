@@ -61,7 +61,7 @@ class SettingsActivity : AppCompatActivity() {
             Toast.makeText(this, "Stahujem ML Kit model $from->$to ...", Toast.LENGTH_LONG).show()
             lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
                 val ok = Translate.downloadMlkit(from, to)
-                runOnUiThread { Toast.makeText(this, if (ok) "ML Kit model stiahnuty" else "Stiahnutie zlyhalo", Toast.LENGTH_SHORT).show() }
+                runOnUiThread { Toast.makeText(this@SettingsActivity, if (ok) "ML Kit model stiahnuty" else "Stiahnutie zlyhalo", Toast.LENGTH_SHORT).show() }
             }
         }
         findViewById<Button>(R.id.btn_save).setOnClickListener {
