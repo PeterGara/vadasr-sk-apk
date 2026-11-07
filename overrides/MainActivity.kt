@@ -186,6 +186,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.act_send).setOnClickListener { sendToOperit() }
         findViewById<Button>(R.id.act_dellast).setOnClickListener { doDelVeta() }
         findViewById<Button>(R.id.act_clear).setOnClickListener { doClear() }
+        findViewById<Button>(R.id.act_copy).setOnClickListener { doCopy() }
 
         btnMode1.setOnClickListener { setMode(MODE_TRANS) }
         btnMode2.setOnClickListener { setMode(MODE_TRANSLATE) }
