@@ -4,11 +4,9 @@ import android.os.Bundle
 import android.text.InputType
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.k2fsa.sherpa.onnx.R
 
-/**
- * Nastavenia v apke — aby to vedel nastavit kazdy (bez editovania suborov).
- */
 class SettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -17,6 +15,8 @@ class SettingsActivity : AppCompatActivity() {
         Settings.init(getExternalFilesDir(null) ?: filesDir)
 
         val langSp = findViewById<Spinner>(R.id.sp_lang)
+        val asrDirEd = findViewById<EditText>(R.id.ed_asrdir)
+        val engineSp = findViewById<Spinner>(R.id.sp_engine)
         val targetSp = findViewById<Spinner>(R.id.sp_target)
         val operitSw = findViewById<Switch>(R.id.sw_operit)
         val portEd = findViewById<EditText>(R.id.ed_port)
@@ -27,11 +27,21 @@ class SettingsActivity : AppCompatActivity() {
         val modelEd = findViewById<EditText>(R.id.ed_transmodel)
         val beepSw = findViewById<Switch>(R.id.sw_beep)
 
-        val langs = arrayOf("SK", "EN", "DE", "FR", "ES")
-        langSp.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, langs)
-        langSp.setSelection(langs.indexOf(Settings.asrLang.uppercase()).coerceAtLeast(0))
-        targetSp.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, langs)
-        targetSp.setSelection(langs.indexOf(Settings.translateTarget.uppercase()).coerceAtLeast(0))
+        val item = android.R.layout.simple_spinner_dropdown_item
+        // vlastny layout pre spinnery (viditelny text na tmavom pozadi)
+        val langs = arrayOf("SK (Parakeet - najpresnejsi)", "EN", "DE", "FR", "ES", "CZ", "PL", "IT")
+        val langVals = arrayOf("sk", "en", "de", "fr", "es", "cz", "pl", "it")
+        langSp.adapter = ArrayAdapter(this, R.layout.spinner_item, langs)
+        langSp.setSelection(langVals.indexOf(Settings.asrLang).coerceAtLeast(0))
+
+        asrDirEd.setText(Settings.asrModelDir)
+
+        val engines = arrayOf("ML Kit (offline, jednoduche)", "GGUF (vlastny model/server)")
+        engineSp.adapter = ArrayAdapter(this, R.layout.spinner_item, engines)
+        engineSp.setSelection(if (Settings.translateEngine == "gguf") 1 else 0)
+
+        targetSp.adapter = ArrayAdapter(this, R.layout.spinner_item, arrayOf("SK", "EN", "DE", "FR", "ES", "CZ", "PL", "IT"))
+        targetSp.setSelection(arrayOf("SK","EN","DE","FR","ES","CZ","PL","IT").indexOf(Settings.translateTarget.uppercase()).coerceAtLeast(1))
 
         operitSw.isChecked = Settings.operitEnabled
         portEd.setText(Settings.operitPort)
@@ -44,9 +54,20 @@ class SettingsActivity : AppCompatActivity() {
         tokenEd.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
 
         findViewById<Button>(R.id.btn_back).setOnClickListener { finish() }
+        findViewById<Button>(R.id.btn_dlmlkit).setOnClickListener {
+            val from = langVals[langSp.selectedItemPosition]
+            val to = targetSp.selectedItem.text.toString().lowercase()
+            Toast.makeText(this, "Stahujem ML Kit model $from->$to ...", Toast.LENGTH_LONG).show()
+            lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val ok = Translate.downloadMlkit(from, to)
+                runOnUiThread { Toast.makeText(this, if (ok) "ML Kit model stiahnuty" else "Stiahnutie zlyhalo", Toast.LENGTH_SHORT).show() }
+            }
+        }
         findViewById<Button>(R.id.btn_save).setOnClickListener {
-            Settings.asrLang = langs[langSp.selectedItemPosition].lowercase()
-            Settings.translateTarget = langs[targetSp.selectedItemPosition]
+            Settings.asrLang = langVals[langSp.selectedItemPosition]
+            Settings.asrModelDir = asrDirEd.text.toString()
+            Settings.translateEngine = if (engineSp.selectedItemPosition == 1) "gguf" else "mlkit"
+            Settings.translateTarget = targetSp.selectedItem.text.toString().uppercase()
             Settings.operitEnabled = operitSw.isChecked
             Settings.operitPort = portEd.text.toString().ifBlank { "8094" }
             Settings.operitToken = tokenEd.text.toString()
