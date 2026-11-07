@@ -54,6 +54,15 @@ import java.util.Locale
 private const val TAG = "sherpa-onnx"
 private const val REQUEST_RECORD_AUDIO_PERMISSION = 200
 
+/**
+ * v6 "engi ne":
+ *  - send_new / send_all  (posle len nove / vsetko)
+ *  - beep:N               (N x jemne pipnutie cez STREAM_MUSIC, hudbu nezastavi)
+ *  - del_veta / del_odstavec / clear
+ *  - engine: http: / shell: / append:TEXT / beep:N / ...
+ *  - watchdog: obnovi nahravanie ak spadne
+ * Vsetky akcie sa citaju z commands.txt a buttons.txt ZA BEHU -> zmeny bez buildu.
+ */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var recordButton: Button
@@ -76,6 +85,7 @@ class MainActivity : AppCompatActivity() {
     private val undoStack = ArrayDeque<String>()
     private val redoStack = ArrayDeque<String>()
 
+    // config
     private var cfgThreshold = 0.5f
     private var cfgMinSilence = 0.4f
     private var cfgCmdMaxWords = 4
@@ -96,7 +106,7 @@ class MainActivity : AppCompatActivity() {
     private var lastNotifyAt = 0L
 
     @Volatile private var isRecording = false
-    @Volatile private var wantRecording = false
+    @Volatile private var wantRecording = false   // "ma sa nahravat" (pre watchdog)
 
     private var toneGen: ToneGenerator? = null
     private val ui = Handler(Looper.getMainLooper())
@@ -110,6 +120,7 @@ class MainActivity : AppCompatActivity() {
     )
     private val buttonViews = ArrayList<Button>()
 
+    // ---------------- pipanie ----------------
     private fun beep(times: Int) {
         if (!cfgBeep) return
         try {
@@ -223,7 +234,7 @@ class MainActivity : AppCompatActivity() {
         val m = mapOf(
             '\u010d' to 'c', '\u0161' to 's', '\u017e' to 'z', '\u00fd' to 'y', '\u00e1' to 'a', '\u00ed' to 'i',
             '\u00e9' to 'e', '\u00f3' to 'o', '\u00fa' to 'u', '\u00f4' to 'o', '\u00e4' to 'a', '\u013e' to 'l',
-            '\u0148' to 'n', '\u0165' to 't', '\u010f' to 'd', '\u0155' to 'r'
+            '\u0148' to 'n', '\u0165' to 't', '\u010f' to 'd', '\u0155' to 'r', '\u00f4' to 'o'
         )
         return s.lowercase().map { m[it] ?: it }.joinToString("")
     }
@@ -366,6 +377,7 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread { textView.append("\n[znova]") }
     }
 
+    /** zmaze poslednu vetu (segment) */
     private fun doDelVeta() {
         if (segments.isEmpty()) { beep(2); return }
         pushHistory()
@@ -375,6 +387,7 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread { render(); updateStatus(); textView.append("\n[zmazana veta]") }
     }
 
+    /** zmaze posledny odstavec (skupina viet od posledneho prazdneho riadku) */
     private fun doDelOdstavec() {
         if (segments.isEmpty()) { beep(2); return }
         pushHistory()
@@ -454,6 +467,7 @@ class MainActivity : AppCompatActivity() {
         notifyIfNeeded(force = false)
     }
 
+    // ---------------- poslanie (len nove / vsetko) ----------------
     private fun sendToOperit(all: Boolean) {
         val from = if (all) 0 else sentCount
         if (segments.size <= from) {
@@ -468,7 +482,7 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 if (ok) beep(1) else beep(2)
                 textView.post {
-                    textView.append(if (ok) "\n[odoslane OK]" else "\n[CHYBA odoslania: token\/port?]")
+                    textView.append(if (ok) "\n[odoslane OK]" else "\n[CHYBA odoslania: token/port?]")
                 }
                 updateStatus()
             }
@@ -483,17 +497,17 @@ class MainActivity : AppCompatActivity() {
             }
             val json = "{\"message\":\"" + esc(message) + "\"," +
                     "\"response_mode\":\"async_callback\"," +
-                    "\"callback_url\":\"http:\/\/127.0.0.1:1\/cb\"," +
+                    "\"callback_url\":\"http://127.0.0.1:1/cb\"," +
                     "\"show_floating\":false," +
                     "\"return_tool_status\":false," +
                     "\"chat_id\":\"" + esc(cfgOperitChatId) + "\"}"
-            val url = URL("http:\/\/127.0.0.1:" + cfgOperitPort + "\/api\/external-chat")
+            val url = URL("http://127.0.0.1:" + cfgOperitPort + "/api/external-chat")
             val c = url.openConnection() as HttpURLConnection
             c.requestMethod = "POST"
             c.doOutput = true
             c.connectTimeout = 8000
             c.readTimeout = 20000
-            c.setRequestProperty("Content-Type", "application\/json; charset=utf-8")
+            c.setRequestProperty("Content-Type", "application/json; charset=utf-8")
             c.setRequestProperty("Authorization", "Bearer " + cfgOperitToken)
             OutputStreamWriter(c.outputStream, Charsets.UTF_8).use { it.write(json) }
             val code = c.responseCode
@@ -535,7 +549,7 @@ class MainActivity : AppCompatActivity() {
         if (text.isBlank()) return
         try {
             val i = Intent(Intent.ACTION_SEND).apply {
-                type = "text\/plain"
+                type = "text/plain"
                 putExtra(Intent.EXTRA_TEXT, text)
             }
             runOnUiThread { startActivity(Intent.createChooser(i, "Zdielat diktat")) }
@@ -555,14 +569,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun doSavePublic() {
         try {
-            val outDir = File("\/sdcard\/Documents\/Diktat")
+            val outDir = File("/sdcard/Documents/Diktat")
             if (!outDir.exists()) outDir.mkdirs()
             val name = "diktat_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".txt"
             val out = File(outDir, name)
             out.writeText(segments.joinToString("\n"), Charsets.UTF_8)
             beep(2)
             runOnUiThread {
-                Toast.makeText(this, "Ulozene do Documents\/Diktat", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Ulozene do Documents/Diktat", Toast.LENGTH_LONG).show()
                 textView.append("\n[Ulozene: ${out.absolutePath}]")
             }
         } catch (e: Exception) { Log.e(TAG, "save_public err: $e") }
@@ -587,6 +601,7 @@ class MainActivity : AppCompatActivity() {
         } }.show()
     }
 
+    // ---------------- zivotny cyklus ----------------
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         val ok = requestCode == REQUEST_RECORD_AUDIO_PERMISSION &&
@@ -637,6 +652,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /** watchdog: ak ma nahravanie bezat a nebezi (ruca), skus obnovit */
     private fun startWatchdog() {
         ui.postDelayed(object : Runnable {
             override fun run() {
