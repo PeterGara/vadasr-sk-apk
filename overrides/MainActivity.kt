@@ -12,8 +12,14 @@ import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
+import android.media.MediaCodec
+import android.media.MediaExtractor
+import android.media.MediaFormat
+import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.media.ToneGenerator
+import android.media.audiofx.AutomaticGainControl
+import android.media.audiofx.NoiseSuppressor
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -25,8 +31,11 @@ import android.text.TextWatcher
 import android.util.Log
 import android.view.View
 import android.view.WindowManager
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ListView
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -50,10 +59,10 @@ import kotlinx.coroutines.withContext
 import kotlin.concurrent.thread
 import java.io.DataOutputStream
 import java.io.File
-import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.nio.ByteOrder
 import java.text.SimpleDateFormat
 import java.util.ArrayDeque
 import java.util.Date
@@ -61,6 +70,9 @@ import java.util.Locale
 
 private const val TAG = "sherpa-onnx"
 private const val REQ_MIC = 200
+private const val MODE_TRANS = 0
+private const val MODE_TRANSLATE = 1
+private const val MODE_RECORDS = 2
 
 class MainActivity : AppCompatActivity() {
 
@@ -69,9 +81,24 @@ class MainActivity : AppCompatActivity() {
     private lateinit var statusView: TextView
     private lateinit var translateLabel: TextView
     private lateinit var translateText: EditText
+
+    private lateinit var btnMode1: Button
+    private lateinit var btnMode2: Button
+    private lateinit var btnMode3: Button
+    private lateinit var mainActions: View
+    private lateinit var btnRow1: View
+    private lateinit var btnRow2: View
+    private lateinit var transActions: View
+    private lateinit var recordsPage: View
+    private lateinit var lvRecords: ListView
+
+    private var mode = MODE_TRANS
+
     private lateinit var vad: Vad
     private var recognizer: OfflineRecognizer? = null
     private var audioRecord: AudioRecord? = null
+    private var noiseSuppressor: NoiseSuppressor? = null
+    private var agcFx: AutomaticGainControl? = null
     private val audioSource = MediaRecorder.AudioSource.VOICE_RECOGNITION
     private val sampleRateInHz = 16000
     private val channelConfig = AudioFormat.CHANNEL_IN_MONO
@@ -89,9 +116,11 @@ class MainActivity : AppCompatActivity() {
     private var toneGen: ToneGenerator? = null
     private val ui = Handler(Looper.getMainLooper())
     private var translateJob: Job? = null
+    private var player: MediaPlayer? = null
 
     private val buttonIds = listOf(R.id.btn_1, R.id.btn_2, R.id.btn_3, R.id.btn_4, R.id.btn_5, R.id.btn_6, R.id.btn_7, R.id.btn_8)
     private val buttonViews = ArrayList<Button>()
+    private val recordFiles = ArrayList<File>()
 
     // ---------------- pipanie ----------------
     private fun beepFor(kind: String) {
@@ -142,12 +171,35 @@ class MainActivity : AppCompatActivity() {
         statusView = findViewById(R.id.status_view)
         translateLabel = findViewById(R.id.translate_label)
         translateText = findViewById(R.id.translate_text)
+        btnMode1 = findViewById(R.id.btn_mode1)
+        btnMode2 = findViewById(R.id.btn_mode2)
+        btnMode3 = findViewById(R.id.btn_mode3)
+        mainActions = findViewById(R.id.main_actions)
+        btnRow1 = findViewById(R.id.btn_row1)
+        btnRow2 = findViewById(R.id.btn_row2)
+        transActions = findViewById(R.id.trans_actions)
+        recordsPage = findViewById(R.id.records_page)
+        lvRecords = findViewById(R.id.lv_records)
 
         recordButton.setOnClickListener { toggleRecord() }
         findViewById<Button>(R.id.btn_menu).setOnClickListener { showMenu() }
         findViewById<Button>(R.id.act_send).setOnClickListener { sendToOperit() }
         findViewById<Button>(R.id.act_dellast).setOnClickListener { doDelVeta() }
         findViewById<Button>(R.id.act_clear).setOnClickListener { doClear() }
+
+        btnMode1.setOnClickListener { setMode(MODE_TRANS) }
+        btnMode2.setOnClickListener { setMode(MODE_TRANSLATE) }
+        btnMode3.setOnClickListener { setMode(MODE_RECORDS) }
+        findViewById<Button>(R.id.btn_trans_now).setOnClickListener { doTranslateNow() }
+        findViewById<Button>(R.id.btn_trans_copy).setOnClickListener { doCopyTranslate() }
+        findViewById<Button>(R.id.btn_trans_send).setOnClickListener { doSendTranslate() }
+        findViewById<Button>(R.id.rec_pick).setOnClickListener { pickAudioForTranscribe() }
+        findViewById<Button>(R.id.rec_refresh).setOnClickListener { loadRecords() }
+
+        lvRecords.setOnItemClickListener { _, _, pos, _ ->
+            val f = recordFiles.getOrNull(pos) ?: return@setOnItemClickListener
+            showRecordActions(f)
+        }
 
         buttonViews.clear()
         buttonIds.forEach { id ->
@@ -165,7 +217,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         loadButtons()
-        updateTranslateVisibility()
+        setMode(MODE_TRANS)
         startWatchdog()
 
         editText.setText("Inicializujem modely...")
@@ -181,40 +233,81 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    // ---------------- preklad ----------------
-    private fun updateTranslateVisibility() {
-        val v = if (Settings.translateEnabled) View.VISIBLE else View.GONE
-        translateLabel.visibility = v
-        translateText.visibility = v
+    // ---------------- rezimy ----------------
+    private fun setMode(m: Int) {
+        mode = m
+        val trans = m == MODE_TRANS
+        val translate = m == MODE_TRANSLATE
+        val records = m == MODE_RECORDS
+
+        recordButton.visibility = if (trans) View.VISIBLE else View.GONE
+        mainActions.visibility = if (trans) View.VISIBLE else View.GONE
+        btnRow1.visibility = if (trans) View.VISIBLE else View.GONE
+        btnRow2.visibility = if (trans) View.VISIBLE else View.GONE
+        editText.visibility = if (records) View.GONE else View.VISIBLE
+        translateLabel.visibility = if (translate) View.VISIBLE else View.GONE
+        translateText.visibility = if (translate) View.VISIBLE else View.GONE
+        transActions.visibility = if (translate) View.VISIBLE else View.GONE
+        recordsPage.visibility = if (records) View.VISIBLE else View.GONE
+
+        styleModeBtn(btnMode1, trans)
+        styleModeBtn(btnMode2, translate)
+        styleModeBtn(btnMode3, records)
+
+        if (records) loadRecords() else updateStatus()
     }
 
+    private fun styleModeBtn(b: Button, on: Boolean) {
+        b.setBackgroundResource(if (on) R.drawable.seg_on else R.drawable.seg_off)
+        b.setTextColor(if (on) 0xFFFFFFFF.toInt() else 0xFFC7D0DE.toInt())
+        b.setTypeface(null, if (on) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+    }
+
+    // ---------------- preklad ----------------
     private fun scheduleLiveTranslate() {
-        if (!Settings.translateEnabled) return
+        if (!Settings.translateEnabled || mode != MODE_TRANSLATE) return
         translateJob?.cancel()
         translateJob = lifecycleScope.launch(Dispatchers.IO) {
             delay(1500)
             val src = editText.text.toString()
             if (src.isBlank()) return@launch
-            val out = if (Settings.translateEngine == "mlkit")
-                Translate.translateMlkit(src, Settings.asrLang, Settings.translateTarget)
-            else Translate.translateGguf(src, Settings.translateTarget)
+            val out = translateText(src)
             if (out != null) withContext(Dispatchers.Main) { translateText.setText(out) }
         }
     }
 
+    private suspend fun translateText(src: String): String? =
+        if (Settings.translateEngine == "mlkit")
+            Translate.translateMlkit(src, Settings.asrLang, Settings.translateTarget)
+        else Translate.translateGguf(src, Settings.translateTarget)
+
     private fun doTranslateNow() {
-        if (!Settings.translateEnabled) { toast("Zapni preklad v nastaveniach"); return }
         val src = editText.text.toString()
-        if (src.isBlank()) return
+        if (src.isBlank()) { toast("Nic na preklad"); return }
         statusView.text = "Prekladam..."
         lifecycleScope.launch(Dispatchers.IO) {
-            val out = if (Settings.translateEngine == "mlkit")
-                Translate.translateMlkit(src, Settings.asrLang, Settings.translateTarget)
-            else Translate.translateGguf(src, Settings.translateTarget)
+            val out = translateText(src)
             withContext(Dispatchers.Main) {
                 if (out != null) { translateText.setText(out); statusView.text = "Prelozene" }
                 else statusView.text = "Preklad zlyhal"
             }
+        }
+    }
+
+    private fun doCopyTranslate() {
+        val t = translateText.text.toString()
+        if (t.isBlank()) { toast("Nic na kopirovanie"); return }
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        cm.setPrimaryClip(ClipData.newPlainText("speako", t)); beepFor("send"); toast("Preklad skopirovany")
+    }
+
+    private fun doSendTranslate() {
+        val t = translateText.text.toString()
+        if (t.isBlank()) { toast("Nic na poslanie"); return }
+        if (!Settings.operitEnabled || Settings.operitToken.isBlank()) { toast("Operit nie je nastaveny"); return }
+        thread(true) {
+            val ok = httpSend(t)
+            runOnUiThread { beepFor(if (ok) "send" else "err"); toast(if (ok) "Preklad poslany" else "Odoslanie zlyhalo") }
         }
     }
 
@@ -224,7 +317,7 @@ class MainActivity : AppCompatActivity() {
             "Nastavenia",
             "Prepis nahravky (audio subor)",
             "Preklad (teraz)",
-            "Strihat nahravku",
+            "Orezat nahravku",
             "Poslat do Operitu",
             "Zmazat vetu",
             "Zmazat odstavec",
@@ -239,8 +332,8 @@ class MainActivity : AppCompatActivity() {
         AlertDialog.Builder(this).setTitle("Menu").setItems(items) { _, i -> when (i) {
             0 -> startActivity(Intent(this, SettingsActivity::class.java))
             1 -> pickAudioForTranscribe()
-            2 -> doTranslateNow()
-            3 -> trimLastRecording()
+            2 -> { setMode(MODE_TRANSLATE); doTranslateNow() }
+            3 -> pickAudioForTrim()
             4 -> sendToOperit()
             5 -> doDelVeta()
             6 -> doDelOdstavec()
@@ -254,7 +347,7 @@ class MainActivity : AppCompatActivity() {
         } }.show()
     }
 
-    // ---------------- prepis audio suboru ----------------
+    // ---------------- univerzalny prepis ----------------
     private fun pickAudioForTranscribe() {
         try {
             val i = Intent(Intent.ACTION_GET_CONTENT).apply { type = "audio/*" }
@@ -262,24 +355,47 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { toast("Neda sa otvorit vyber suboru") }
     }
 
+    private fun pickAudioForTrim() {
+        try {
+            val i = Intent(Intent.ACTION_GET_CONTENT).apply { type = "audio/*" }
+            startActivityForResult(Intent.createChooser(i, "Vyber audio"), 1002)
+        } catch (e: Exception) { toast("Neda sa otvorit vyber suboru") }
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 1001 && resultCode == RESULT_OK) {
-            val uri = data?.data ?: return
-            transcribeUri(uri)
+        if (resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
+        when (requestCode) {
+            1001 -> transcribeUri(uri)
+            1002 -> {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val f = copyUriToCache(uri)
+                    if (f != null) withContext(Dispatchers.Main) { trimDialog(f) }
+                    else withContext(Dispatchers.Main) { toast("Neda sa precitat subor") }
+                }
+            }
         }
+    }
+
+    private fun copyUriToCache(uri: Uri): File? {
+        return try {
+            val f = File(cacheDir, "audio_pick_" + System.currentTimeMillis())
+            contentResolver.openInputStream(uri)?.use { input ->
+                FileOutputStream(f).use { out -> input.copyTo(out) }
+            }
+            f
+        } catch (e: Exception) { Log.e(TAG, "copy err: $e"); null }
     }
 
     private fun transcribeUri(uri: Uri) {
         statusView.text = "Prepisujem subor..."
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val tmp = File(cacheDir, "audio_in.tmp")
-                contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(tmp).use { out -> input.copyTo(out) }
-                }
+                val tmp = copyUriToCache(uri) ?: return@launch
                 val text = transcribeFile(tmp)
                 withContext(Dispatchers.Main) {
+                    setMode(MODE_TRANS)
                     if (text.isBlank()) { statusView.text = "Nic sa nepodarilo prepisat" }
                     else {
                         val cur = txt()
@@ -294,22 +410,15 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Prepis celeho audio suboru cez aktualny ASR model (Parakeet). */
+    /** Prepis hocijakeho audio suboru (mp3/m4a/ogg/opus/flac/wav) cez ASR model. */
     private fun transcribeFile(f: File): String {
         val rec = recognizer ?: return ""
-        val bytes = f.readBytes()
-        // ak je WAV, preskoc 44B hlavicku
-        val isWav = bytes.size > 44 && bytes[0] == 'R'.code.toByte() && bytes[1] == 'I'.code.toByte()
-        val start = if (isWav) 44 else 0
-        val n = (bytes.size - start) / 2
-        if (n <= 0) return ""
-        val samples = FloatArray(n)
-        for (i in 0 until n) {
-            val lo = bytes[start + i * 2].toInt() and 0xFF
-            val hi = bytes[start + i * 2 + 1].toInt()
-            val v = (hi shl 8) or lo
-            samples[i] = v / 32768.0f
-        }
+        val samples = AudioDecoder.decodeToMono16k(f) ?: return ""
+        if (samples.isEmpty()) return ""
+        return runRecognizer(rec, samples)
+    }
+
+    private fun runRecognizer(rec: OfflineRecognizer, samples: FloatArray): String {
         return try {
             val s = rec.createStream()
             s.acceptWaveform(samples, sampleRateInHz)
@@ -318,54 +427,202 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { "" }
     }
 
-    // ---------------- strihanie nahravky ----------------
-    private fun trimLastRecording() {
-        val src = wavFile
-        if (src == null || !src.exists()) { toast("Ziadna nahravka"); return }
-        val v = EditText(this).apply {
-            hint = "od-do v sekundach, napr. 3.5-12"
-            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
-        }
-        AlertDialog.Builder(this).setTitle("Strihat nahravku").setView(v)
-            .setPositiveButton("Strihnut") { _, _ ->
-                val parts = v.text.toString().split("-")
-                if (parts.size != 2) { toast("Zly format"); return@setPositiveButton }
-                val a = parts[0].trim().toDoubleOrNull() ?: 0.0
-                val b = parts[1].trim().toDoubleOrNull() ?: 0.0
-                lifecycleScope.launch(Dispatchers.IO) {
-                    val ok = trimWav(src, a, b)
-                    withContext(Dispatchers.Main) { toast(if (ok != null) "Ostrihane: ${ok.name}" else "Strihanie zlyhalo") }
+    // ---------------- OKNO NA OREZAVANIE ----------------
+    private fun trimDialog(src: File) {
+        statusView.text = "Nacitavam audio..."
+        lifecycleScope.launch(Dispatchers.IO) {
+            val samples = AudioDecoder.decodeToMono16k(src)
+            withContext(Dispatchers.Main) {
+                if (samples == null || samples.isEmpty()) { statusView.text = "Audio sa neda precitat"; toast("Neda sa dekodovat"); return@withContext }
+                val dur = samples.size / sampleRateInHz.toFloat()
+                statusView.text = String.format(Locale.US, "Dlzka: %.1f s", dur)
+
+                val v = layoutInflater.inflate(R.layout.dialog_trim, null)
+                val seekFrom = v.findViewById<SeekBar>(R.id.seek_from)
+                val seekTo = v.findViewById<SeekBar>(R.id.seek_to)
+                val tvRange = v.findViewById<TextView>(R.id.tv_range)
+                val edFrom = v.findViewById<EditText>(R.id.ed_from)
+                val edTo = v.findViewById<EditText>(R.id.ed_to)
+                val btnPlay = v.findViewById<Button>(R.id.btn_play)
+
+                seekFrom.max = 1000; seekTo.max = 1000
+                seekTo.progress = 1000
+                edTo.setText(String.format(Locale.US, "%.1f", dur))
+
+                fun fmt(ms: Int): String {
+                    val s = ms / 1000
+                    return String.format(Locale.US, "%d:%02d", s / 60, s % 60)
                 }
-            }.setNegativeButton("Zrusit", null).show()
-    }
+                fun update() {
+                    val a = dur * seekFrom.progress / 1000f
+                    val b = dur * seekTo.progress / 1000f
+                    if (seekFrom.progress > seekTo.progress) seekTo.progress = seekFrom.progress
+                    tvRange.text = String.format(Locale.US, "%.1f s  -  %.1f s", a, b)
+                    edFrom.setText(String.format(Locale.US, "%.1f", a))
+                    edTo.setText(String.format(Locale.US, "%.1f", b))
+                }
+                seekFrom.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(sb: SeekBar?, p: Int, u: Boolean) { update() }
+                    override fun onStartTrackingTouch(sb: SeekBar?) {}
+                    override fun onStopTrackingTouch(sb: SeekBar?) {}
+                })
+                seekTo.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(sb: SeekBar?, p: Int, u: Boolean) { update() }
+                    override fun onStartTrackingTouch(sb: SeekBar?) {}
+                    override fun onStopTrackingTouch(sb: SeekBar?) {}
+                })
 
-    private fun trimWav(src: File, from: Double, to: Double): File? {
-        return try {
-            val all = src.readBytes()
-            val hdr = if (all[0] == 'R'.code.toByte()) 44 else 0
-            val s = hdr + (from * sampleRateInHz * 2).toInt()
-            val e = (hdr + (to * sampleRateInHz * 2).toInt()).coerceAtMost(all.size)
-            if (s >= e) return null
-            val data = all.copyOfRange(s.coerceAtLeast(hdr), e)
-            val out = File(diktatDir(), "ostrihane_" + System.currentTimeMillis() + ".wav")
-            DataOutputStream(FileOutputStream(out)).use { o ->
-                writeWavHeader(o, data.size)
-                o.write(data)
+                btnPlay.setOnClickListener {
+                    if (player?.isPlaying == true) { stopPlayer(); btnPlay.text = "Prehrat" }
+                    else {
+                        val from = edFrom.text.toString().toDoubleOrNull() ?: 0.0
+                        val to = edTo.text.toString().toDoubleOrNull() ?: dur.toDouble()
+                        playRange(src, from, to) {
+                            ui.post { btnPlay.text = "Prehrat" }
+                        }
+                        btnPlay.text = "Stop"
+                    }
+                }
+
+                val dlg = AlertDialog.Builder(this)
+                    .setTitle("Orezat nahravku")
+                    .setView(v)
+                    .setPositiveButton("Orezat", null)
+                    .setNeutralButton("Orezat + prepisat", null)
+                    .setNegativeButton("Zrusit") { _, _ -> stopPlayer() }
+                    .create()
+                dlg.setOnShowListener {
+                    dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                        val a = edFrom.text.toString().toDoubleOrNull() ?: 0.0
+                        val b = edTo.text.toString().toDoubleOrNull() ?: 0.0
+                        if (b <= a) { toast("Do musi byt vacsie ako Od"); return@setOnClickListener }
+                        stopPlayer(); dlg.dismiss()
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            val out = exportRange(samples, a, b)
+                            withContext(Dispatchers.Main) { toast(if (out != null) "Orezane: ${out.name}" else "Orezanie zlyhalo") }
+                        }
+                    }
+                    dlg.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
+                        val a = edFrom.text.toString().toDoubleOrNull() ?: 0.0
+                        val b = edTo.text.toString().toDoubleOrNull() ?: 0.0
+                        if (b <= a) { toast("Do musi byt vacsie ako Od"); return@setOnClickListener }
+                        stopPlayer(); dlg.dismiss()
+                        statusView.text = "Prepisujem orezane..."
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            val out = exportRange(samples, a, b) ?: return@launch
+                            val text = transcribeFile(out)
+                            withContext(Dispatchers.Main) {
+                                setMode(MODE_TRANS)
+                                if (text.isBlank()) statusView.text = "Nic sa nepodarilo prepisat"
+                                else {
+                                    val cur = txt()
+                                    setTxt(if (cur.isBlank()) text else cur + "\n" + text)
+                                    statusView.text = "Prepisane"; persist(); beepFor("send")
+                                }
+                            }
+                        }
+                    }
+                }
+                dlg.show()
             }
-            out
-        } catch (e: Exception) { Log.e(TAG, "trim err: $e"); null }
+        }
     }
 
-    private fun writeWavHeader(o: DataOutputStream, dataLen: Int) {
-        o.writeBytes("RIFF"); o.writeInt(Integer.reverseBytes(36 + dataLen)); o.writeBytes("WAVE")
-        o.writeBytes("fmt "); o.writeInt(Integer.reverseBytes(16))
-        o.writeShort(java.lang.Short.reverseBytes(1.toShort()).toInt())
-        o.writeShort(java.lang.Short.reverseBytes(1.toShort()).toInt())
-        o.writeInt(Integer.reverseBytes(sampleRateInHz))
-        o.writeInt(Integer.reverseBytes(sampleRateInHz * 2))
-        o.writeShort(java.lang.Short.reverseBytes(2.toShort()).toInt())
-        o.writeShort(java.lang.Short.reverseBytes(16.toShort()).toInt())
-        o.writeBytes("data"); o.writeInt(Integer.reverseBytes(dataLen))
+    private fun exportRange(all: FloatArray, from: Double, to: Double): File? {
+        return try {
+            val s = (from * sampleRateInHz).toInt().coerceIn(0, all.size)
+            val e = (to * sampleRateInHz).toInt().coerceIn(0, all.size)
+            if (e <= s) return null
+            val part = all.copyOfRange(s, e)
+            val out = File(diktatDir(), "orezane_" + System.currentTimeMillis() + ".wav")
+            AudioDecoder.writeWav16k(out, part)
+            out
+        } catch (e: Exception) { Log.e(TAG, "export err: $e"); null }
+    }
+
+    private fun playRange(src: File, from: Double, to: Double, onDone: () -> Unit) {
+        try {
+            stopPlayer()
+            player = MediaPlayer().apply {
+                setDataSource(src.absolutePath)
+                setOnCompletionListener { stopPlayer(); onDone() }
+                prepare()
+                seekTo((from * 1000).toInt())
+                start()
+            }
+            ui.postDelayed({
+                try { if (player?.isPlaying == true && player!!.currentPosition >= (to * 1000).toInt()) { stopPlayer(); onDone() } } catch (e: Exception) {}
+            }, (to - from).toLong() * 1000 + 200)
+        } catch (e: Exception) { Log.e(TAG, "play err: $e"); toast("Prehranie zlyhalo") }
+    }
+
+    private fun stopPlayer() { try { player?.stop() } catch (e: Exception) {}; try { player?.release() } catch (e: Exception) {}; player = null }
+
+    private fun playWhole(f: File) {
+        try {
+            stopPlayer()
+            player = MediaPlayer().apply {
+                setDataSource(f.absolutePath)
+                setOnCompletionListener { stopPlayer() }
+                prepare(); start()
+            }
+            toast("Prehravam...")
+        } catch (e: Exception) { Log.e(TAG, "playWhole err: $e"); toast("Prehranie zlyhalo") }
+    }
+
+    // ---------------- zoznam nahravok ----------------
+    private fun loadRecords() {
+        try {
+            val exts = setOf("wav", "mp3", "m4a", "aac", "ogg", "opus", "flac", "3gp", "amr")
+            val files = diktatDir().listFiles { f -> f.isFile && f.extension.lowercase() in exts } ?: arrayOf()
+            recordFiles.clear()
+            recordFiles.addAll(files.sortedByDescending { it.lastModified() })
+            val names = recordFiles.map { f ->
+                val kb = f.length() / 1024
+                val dt = SimpleDateFormat("dd.MM HH:mm", Locale.US).format(Date(f.lastModified()))
+                "$dt   ${f.name}   (${kb} kB)"
+            }
+            runOnUiThread {
+                lvRecords.adapter = ArrayAdapter(this, R.layout.records_row, names)
+            }
+        } catch (e: Exception) { Log.e(TAG, "loadRecords err: $e") }
+    }
+
+    private fun showRecordActions(f: File) {
+        val items = arrayOf("Prehrat", "Prepisat", "Orezat", "Zdielat", "Zmazat")
+        AlertDialog.Builder(this).setTitle(f.name).setItems(items) { _, i -> when (i) {
+            0 -> playWhole(f)
+            1 -> transcribePickedFile(f)
+            2 -> trimDialog(f)
+            3 -> shareFile(f)
+            4 -> {
+                f.delete(); loadRecords(); toast("Zmazane")
+            }
+        } }.show()
+    }
+
+    private fun transcribePickedFile(f: File) {
+        statusView.text = "Prepisujem..."
+        lifecycleScope.launch(Dispatchers.IO) {
+            val text = transcribeFile(f)
+            withContext(Dispatchers.Main) {
+                setMode(MODE_TRANS)
+                if (text.isBlank()) statusView.text = "Nic sa nepodarilo prepisat"
+                else {
+                    val cur = txt()
+                    setTxt(if (cur.isBlank()) text else cur + "\n" + text)
+                    statusView.text = "Prepisane"; persist(); beepFor("send")
+                }
+            }
+        }
+    }
+
+    private fun shareFile(f: File) {
+        try {
+            val uri = androidx.core.content.FileProvider.getUriForFile(this, packageName + ".fileprovider", f)
+            val i = Intent(Intent.ACTION_SEND).apply { type = "audio/*"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            startActivity(Intent.createChooser(i, "Zdielat"))
+        } catch (e: Exception) { toast("Zdielanie zlyhalo") }
     }
 
     // ---------------- pomocne ----------------
@@ -375,7 +632,7 @@ class MainActivity : AppCompatActivity() {
     private fun doUndo() { if (undoStack.isEmpty()) return; setTxt(undoStack.removeLast()); beepFor("del_veta") }
 
     private fun doDelVeta() {
-        var s = txt().trimEnd('\n')
+        val s = txt().trimEnd('\n')
         if (s.isBlank()) { beepFor("err"); return }
         push()
         val lastNl = s.lastIndexOf('\n')
@@ -398,6 +655,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateStatus() {
+        if (mode == MODE_RECORDS) return
         val t = txt()
         val words = t.split(Regex("\\s+")).filter { it.isNotBlank() }.size
         statusView.text = "${if (isRecording) "NAHRAVA" else "stop"} | $words slov | ${t.length} znakov"
@@ -506,9 +764,10 @@ class MainActivity : AppCompatActivity() {
         "del_odstavec" -> doDelOdstavec()
         "clear" -> doClear()
         "send_new", "send_all" -> sendToOperit()
-        "translate" -> doTranslateNow()
+        "translate" -> { setMode(MODE_TRANSLATE); doTranslateNow() }
         "transcribe_file" -> pickAudioForTranscribe()
-        "trim_audio" -> trimLastRecording()
+        "trim_audio" -> pickAudioForTrim()
+        "records" -> setMode(MODE_RECORDS)
         else -> {}
     }
 
@@ -521,6 +780,7 @@ class MainActivity : AppCompatActivity() {
             val min = AudioRecord.getMinBufferSize(sampleRateInHz, channelConfig, audioFormat)
             audioRecord = AudioRecord(audioSource, sampleRateInHz, channelConfig, audioFormat, min * 2)
             audioRecord!!.startRecording()
+            setupAudioEffects()
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(Intent(this, DiktatService::class.java))
             recordButton.setText("STOP")
             isRecording = true; wantRecording = true
@@ -535,6 +795,7 @@ class MainActivity : AppCompatActivity() {
             isRecording = false; wantRecording = false
             try { stopService(Intent(this, DiktatService::class.java)) } catch (e: Exception) {}
             audioRecord?.stop(); audioRecord?.release(); audioRecord = null
+            releaseAudioEffects()
             try { pcmOut?.close() } catch (e: Exception) {}; pcmOut = null
             recordButton.setText("NAHRAVAT")
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -543,10 +804,27 @@ class MainActivity : AppCompatActivity() {
         updateStatus()
     }
 
+    private fun setupAudioEffects() {
+        try {
+            val sid = audioRecord?.audioSessionId ?: return
+            if (Settings.noiseSuppress && NoiseSuppressor.isAvailable()) {
+                noiseSuppressor = NoiseSuppressor.create(sid)?.apply { enabled = true }
+            }
+            if (Settings.agc && AutomaticGainControl.isAvailable()) {
+                agcFx = AutomaticGainControl.create(sid)?.apply { enabled = true }
+            }
+        } catch (e: Exception) { Log.e(TAG, "fx err: $e") }
+    }
+
+    private fun releaseAudioEffects() {
+        try { noiseSuppressor?.release() } catch (e: Exception) {}; noiseSuppressor = null
+        try { agcFx?.release() } catch (e: Exception) {}; agcFx = null
+    }
+
     private fun startWatchdog() {
         ui.postDelayed(object : Runnable {
             override fun run() {
-                if (wantRecording && !isRecording && recordButton.isEnabled) toggleRecord()
+                if (wantRecording && !isRecording && recordButton.isEnabled && recordButton.visibility == View.VISIBLE) toggleRecord()
                 ui.postDelayed(this, 5000)
             }
         }, 5000)
@@ -554,8 +832,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun initVadModel() {
         val c = getVadModelConfig(0)!!
-        c.sileroVadModelConfig.threshold = 0.5f
-        c.sileroVadModelConfig.minSilenceDuration = 0.4f
+        c.sileroVadModelConfig.threshold = Settings.vadThreshold
+        c.sileroVadModelConfig.minSilenceDuration = Settings.minSilence
         vad = Vad(assetManager = application.assets, config = c)
     }
 
@@ -582,7 +860,6 @@ class MainActivity : AppCompatActivity() {
                 recognizer = OfflineRecognizer(application.assets,
                     OfflineRecognizerConfig(featConfig = getFeatureConfig(sampleRate = sampleRateInHz, featureDim = 80), modelConfig = mc))
             } else {
-                // fallback SK
                 val cfg = OfflineRecognizerConfig(
                     featConfig = getFeatureConfig(sampleRate = sampleRateInHz, featureDim = 80),
                     modelConfig = getOfflineModelConfig(type = 40)!!)
@@ -594,8 +871,7 @@ class MainActivity : AppCompatActivity() {
     private fun processSamples() {
         val buffer = ShortArray(512)
         val scope = CoroutineScope(Dispatchers.IO)
-        // hlavicka WAV na zaciatku
-        try { pcmOut?.let { DataOutputStream(it).also { d -> writeWavHeader(d, 0) } } } catch (e: Exception) {}
+        try { pcmOut?.let { DataOutputStream(it).also { d -> AudioDecoder.writeWavHeader(d, 0) } } } catch (e: Exception) {}
         var total = 0
         while (isRecording) {
             val ret = audioRecord?.read(buffer, 0, buffer.size) ?: -1
@@ -612,7 +888,7 @@ class MainActivity : AppCompatActivity() {
                 while (!vad.empty()) {
                     val seg = vad.front()
                     scope.launch {
-                        val t = runSecondPass(seg.samples)
+                        val t = runRecognizer2(seg.samples)
                         if (t.isNotBlank()) runOnUiThread {
                             val cur = txt()
                             setTxt(if (cur.isBlank()) t else cur + "\n" + t)
@@ -626,14 +902,9 @@ class MainActivity : AppCompatActivity() {
         scope.cancel()
     }
 
-    private fun runSecondPass(samples: FloatArray): String {
+    private fun runRecognizer2(samples: FloatArray): String {
         val rec = recognizer ?: return ""
-        return try {
-            val s = rec.createStream()
-            s.acceptWaveform(samples, sampleRateInHz)
-            rec.decode(s)
-            val r = rec.getResult(s); s.release(); r.text
-        } catch (e: Exception) { "" }
+        return runRecognizer(rec, samples)
     }
 
     private fun diktatDir(): File { val d = File(getExternalFilesDir(null) ?: filesDir, "Diktat"); d.mkdirs(); return d }
@@ -647,9 +918,133 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         Settings.init(getExternalFilesDir(null) ?: filesDir)
-        updateTranslateVisibility(); loadButtons()
+        setMode(mode); loadButtons()
         lifecycleScope.launch(Dispatchers.IO) { initAsr() }
     }
 
-    override fun onDestroy() { super.onDestroy(); try { toneGen?.release() } catch (e: Exception) {} }
+    override fun onDestroy() {
+        super.onDestroy()
+        try { toneGen?.release() } catch (e: Exception) {}
+        stopPlayer()
+    }
+}
+
+/** Univerzalny audio dekoder: hocijaky format -> mono 16 kHz FloatArray. Ziadne externe kniznice. */
+object AudioDecoder {
+    const val SAMPLE_RATE = 16000
+
+    fun decodeToMono16k(file: File): FloatArray? {
+        val extractor = MediaExtractor()
+        try { extractor.setDataSource(file.absolutePath) } catch (e: Exception) { return null }
+        var trackIndex = -1
+        var format: MediaFormat? = null
+        for (i in 0 until extractor.trackCount) {
+            val f = extractor.getTrackFormat(i)
+            val mime = f.getString(MediaFormat.KEY_MIME) ?: continue
+            if (mime.startsWith("audio/")) { trackIndex = i; format = f; break }
+        }
+        if (trackIndex < 0 || format == null) { extractor.release(); return null }
+        extractor.selectTrack(trackIndex)
+        val mime = format.getString(MediaFormat.KEY_MIME) ?: run { extractor.release(); return null }
+        val srcRate = if (format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) format.getInteger(MediaFormat.KEY_SAMPLE_RATE) else SAMPLE_RATE
+        val srcCh = if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 1
+
+        val codec = try { MediaCodec.createDecoderByType(mime) } catch (e: Exception) { extractor.release(); return null }
+        try {
+            codec.configure(format, null, null, 0)
+            codec.start()
+        } catch (e: Exception) {
+            try { codec.release() } catch (x: Exception) {}
+            extractor.release(); return null
+        }
+
+        val out = ArrayList<Float>(1 shl 16)
+        val info = MediaCodec.BufferInfo()
+        var sawInputEos = false
+        var sawOutputEos = false
+        while (!sawOutputEos) {
+            if (!sawInputEos) {
+                val inIdx = codec.dequeueInputBuffer(10000)
+                if (inIdx >= 0) {
+                    val buf = codec.getInputBuffer(inIdx)
+                    val sz = if (buf != null) extractor.readSampleData(buf, 0) else -1
+                    if (sz < 0) {
+                        codec.queueInputBuffer(inIdx, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                        sawInputEos = true
+                    } else {
+                        codec.queueInputBuffer(inIdx, 0, sz, extractor.sampleTime, 0)
+                        extractor.advance()
+                    }
+                }
+            }
+            val outIdx = codec.dequeueOutputBuffer(info, 10000)
+            if (outIdx >= 0) {
+                if (info.size > 0) {
+                    val ob = codec.getOutputBuffer(outIdx)
+                    if (ob != null) {
+                        ob.position(info.offset); ob.limit(info.offset + info.size)
+                        val shorts = ShortArray(info.size / 2)
+                        ob.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(shorts)
+                        var i = 0
+                        while (i < shorts.size) {
+                            var sum = 0f
+                            var c = 0
+                            while (c < srcCh && i + c < shorts.size) { sum += shorts[i + c] / 32768.0f; c++ }
+                            out.add(if (c > 0) sum / c else 0f)
+                            i += srcCh
+                        }
+                    }
+                }
+                codec.releaseOutputBuffer(outIdx, false)
+                if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) sawOutputEos = true
+            }
+        }
+        try { codec.stop() } catch (e: Exception) {}
+        try { codec.release() } catch (e: Exception) {}
+        extractor.release()
+        if (out.isEmpty()) return null
+        val mono = FloatArray(out.size) { out[it] }
+        return if (srcRate == SAMPLE_RATE) mono else resample(mono, srcRate, SAMPLE_RATE)
+    }
+
+    fun resample(inp: FloatArray, from: Int, to: Int): FloatArray {
+        if (from == to || inp.isEmpty()) return inp
+        val outLen = (inp.size.toLong() * to / from).toInt()
+        if (outLen <= 0) return FloatArray(0)
+        val out = FloatArray(outLen)
+        val ratio = from.toDouble() / to
+        for (i in 0 until outLen) {
+            val pos = i * ratio
+            val i0 = pos.toInt().coerceIn(0, inp.size - 1)
+            val i1 = (i0 + 1).coerceIn(0, inp.size - 1)
+            val frac = (pos - i0).toFloat()
+            out[i] = inp[i0] * (1 - frac) + inp[i1] * frac
+        }
+        return out
+    }
+
+    fun writeWavHeader(o: DataOutputStream, dataLen: Int) {
+        o.writeBytes("RIFF"); o.writeInt(Integer.reverseBytes(36 + dataLen)); o.writeBytes("WAVE")
+        o.writeBytes("fmt "); o.writeInt(Integer.reverseBytes(16))
+        o.writeShort(java.lang.Short.reverseBytes(1.toShort()).toInt())
+        o.writeShort(java.lang.Short.reverseBytes(1.toShort()).toInt())
+        o.writeInt(Integer.reverseBytes(SAMPLE_RATE))
+        o.writeInt(Integer.reverseBytes(SAMPLE_RATE * 2))
+        o.writeShort(java.lang.Short.reverseBytes(2.toShort()).toInt())
+        o.writeShort(java.lang.Short.reverseBytes(16.toShort()).toInt())
+        o.writeBytes("data"); o.writeInt(Integer.reverseBytes(dataLen))
+    }
+
+    fun writeWav16k(out: File, samples: FloatArray) {
+        val dataLen = samples.size * 2
+        DataOutputStream(FileOutputStream(out)).use { o ->
+            writeWavHeader(o, dataLen)
+            val bb = java.nio.ByteBuffer.allocate(samples.size * 2).order(ByteOrder.LITTLE_ENDIAN)
+            for (s in samples) {
+                val v = (s * 32767f).toInt().coerceIn(-32768, 32767).toShort()
+                bb.putShort(v)
+            }
+            o.write(bb.array())
+        }
+    }
 }
