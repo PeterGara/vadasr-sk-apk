@@ -175,7 +175,6 @@ class MainActivity : AppCompatActivity(), EngineHost {
     // ---------------- EngineHost ----------------
     override fun getText(): String = txt()
     override fun setText(s: String) { setTxt(s) }
-    override fun beep(n: Int) { beep(n) }
     override fun action(name: String) {
         when (name) {
             "send_new", "send_all" -> sendToOperit()
@@ -255,7 +254,7 @@ class MainActivity : AppCompatActivity(), EngineHost {
         beep(n)
     }
 
-    private fun beep(times: Int) {
+    override fun beep(times: Int) {
         if (!Settings.beep || times <= 0) return
         try {
             ui.post {
