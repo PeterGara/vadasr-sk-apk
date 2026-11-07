@@ -323,10 +323,18 @@ class MainActivity : AppCompatActivity() {
             }
             action == "notify" -> notifyIfNeeded(force = true)
             action == "send_chat" -> {
-                // zastavi nahravanie a posle signál workflowu → text príde priamo do Operit chatu
+                // zastavi nahravanie + zapise flag (workflow ho cita) + broadcast (bonus)
                 runOnUiThread { if (isRecording) toggleRecord() }
+                try {
+                    val dir = diktatDir()
+                    var p = sessionFile?.absolutePath
+                    if (p == null || !File(p).exists()) {
+                        p = dir.listFiles()?.maxByOrNull { it.lastModified() }?.absolutePath
+                    }
+                    if (p != null) File(dir, "SENDME.txt").writeText(p)
+                } catch (e: Exception) { Log.e(TAG, "flag err: $e") }
                 sendSavedBroadcast()
-                textView.post { textView.append("\n[odoslané do Operitu]") }
+                textView.post { textView.append("\n[odosielam do Operitu...]") }
             }
             action == "noop" -> { }
             action.startsWith("append:") -> {
