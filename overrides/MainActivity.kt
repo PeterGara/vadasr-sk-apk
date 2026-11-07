@@ -359,10 +359,12 @@ class MainActivity : AppCompatActivity() {
     private fun writeWavHeader(o: DataOutputStream, dataLen: Int) {
         o.writeBytes("RIFF"); o.writeInt(Integer.reverseBytes(36 + dataLen)); o.writeBytes("WAVE")
         o.writeBytes("fmt "); o.writeInt(Integer.reverseBytes(16))
-        o.writeShort(java.lang.Short.reverseBytes(1)); o.writeShort(java.lang.Short.reverseBytes(1))
+        o.writeShort(java.lang.Short.reverseBytes(1.toShort()).toInt())
+        o.writeShort(java.lang.Short.reverseBytes(1.toShort()).toInt())
         o.writeInt(Integer.reverseBytes(sampleRateInHz))
         o.writeInt(Integer.reverseBytes(sampleRateInHz * 2))
-        o.writeShort(java.lang.Short.reverseBytes(2)); o.writeShort(java.lang.Short.reverseBytes(16))
+        o.writeShort(java.lang.Short.reverseBytes(2.toShort()).toInt())
+        o.writeShort(java.lang.Short.reverseBytes(16.toShort()).toInt())
         o.writeBytes("data"); o.writeInt(Integer.reverseBytes(dataLen))
     }
 
