@@ -7,6 +7,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import com.k2fsa.sherpa.onnx.R
+import java.util.Locale
 
 class SettingsActivity : AppCompatActivity() {
 
@@ -17,6 +18,11 @@ class SettingsActivity : AppCompatActivity() {
 
         val langSp = findViewById<Spinner>(R.id.sp_lang)
         val asrDirEd = findViewById<EditText>(R.id.ed_asrdir)
+        val sbThreshold = findViewById<SeekBar>(R.id.sb_threshold)
+        val tvThreshold = findViewById<TextView>(R.id.tv_threshold)
+        val edMinSilence = findViewById<EditText>(R.id.ed_minsilence)
+        val swNoise = findViewById<Switch>(R.id.sw_noise)
+        val swAgc = findViewById<Switch>(R.id.sw_agc)
         val engineSp = findViewById<Spinner>(R.id.sp_engine)
         val targetSp = findViewById<Spinner>(R.id.sp_target)
         val operitSw = findViewById<Switch>(R.id.sw_operit)
@@ -28,8 +34,6 @@ class SettingsActivity : AppCompatActivity() {
         val modelEd = findViewById<EditText>(R.id.ed_transmodel)
         val beepSw = findViewById<Switch>(R.id.sw_beep)
 
-        val item = android.R.layout.simple_spinner_dropdown_item
-        // vlastny layout pre spinnery (viditelny text na tmavom pozadi)
         val langs = arrayOf("SK (Parakeet - najpresnejsi)", "EN", "DE", "FR", "ES", "CZ", "PL", "IT")
         val langVals = arrayOf("sk", "en", "de", "fr", "es", "cz", "pl", "it")
         langSp.adapter = ArrayAdapter(this, R.layout.spinner_item, langs)
@@ -37,12 +41,27 @@ class SettingsActivity : AppCompatActivity() {
 
         asrDirEd.setText(Settings.asrModelDir)
 
+        // citlivost: SeekBar 10..90 -> 0.10..0.90
+        sbThreshold.max = 80
+        sbThreshold.progress = ((Settings.vadThreshold * 100).toInt() - 10).coerceIn(0, 80)
+        fun showThr() { tvThreshold.text = String.format(Locale.US, "%.2f", (sbThreshold.progress + 10) / 100f) }
+        showThr()
+        sbThreshold.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, p: Int, u: Boolean) { showThr() }
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) {}
+        })
+        edMinSilence.setText(String.format(Locale.US, "%.1f", Settings.minSilence))
+        swNoise.isChecked = Settings.noiseSuppress
+        swAgc.isChecked = Settings.agc
+
         val engines = arrayOf("ML Kit (offline, jednoduche)", "GGUF (vlastny model/server)")
         engineSp.adapter = ArrayAdapter(this, R.layout.spinner_item, engines)
         engineSp.setSelection(if (Settings.translateEngine == "gguf") 1 else 0)
 
-        targetSp.adapter = ArrayAdapter(this, R.layout.spinner_item, arrayOf("SK", "EN", "DE", "FR", "ES", "CZ", "PL", "IT"))
-        targetSp.setSelection(arrayOf("SK","EN","DE","FR","ES","CZ","PL","IT").indexOf(Settings.translateTarget.uppercase()).coerceAtLeast(1))
+        val targets = arrayOf("SK", "EN", "DE", "FR", "ES", "CZ", "PL", "IT")
+        targetSp.adapter = ArrayAdapter(this, R.layout.spinner_item, targets)
+        targetSp.setSelection(targets.indexOf(Settings.translateTarget.uppercase()).coerceAtLeast(0))
 
         operitSw.isChecked = Settings.operitEnabled
         portEd.setText(Settings.operitPort)
@@ -67,6 +86,10 @@ class SettingsActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btn_save).setOnClickListener {
             Settings.asrLang = langVals[langSp.selectedItemPosition]
             Settings.asrModelDir = asrDirEd.text.toString()
+            Settings.vadThreshold = (sbThreshold.progress + 10) / 100f
+            Settings.minSilence = edMinSilence.text.toString().toFloatOrNull() ?: 0.4f
+            Settings.noiseSuppress = swNoise.isChecked
+            Settings.agc = swAgc.isChecked
             Settings.translateEngine = if (engineSp.selectedItemPosition == 1) "gguf" else "mlkit"
             Settings.translateTarget = targetSp.selectedItem.toString().uppercase()
             Settings.operitEnabled = operitSw.isChecked
