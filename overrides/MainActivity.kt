@@ -366,16 +366,29 @@ class MainActivity : AppCompatActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != RESULT_OK) return
         val uri = data?.data ?: return
-        when (requestCode) {
-            1001 -> transcribeUri(uri)
-            1002 -> {
-                lifecycleScope.launch(Dispatchers.IO) {
-                    val f = copyUriToCache(uri)
-                    if (f != null) withContext(Dispatchers.Main) { trimDialog(f) }
-                    else withContext(Dispatchers.Main) { toast("Neda sa precitat subor") }
+        if (requestCode == 1001 || requestCode == 1002) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                val f = copyUriToCache(uri)
+                withContext(Dispatchers.Main) {
+                    if (f == null) toast("Neda sa precitat subor") else askWhatToDo(f)
                 }
             }
         }
+    }
+
+    /** Po vybere suboru: prepisat cely, alebo najprv orezat. */
+    private fun askWhatToDo(f: File) {
+        val items = arrayOf("Prepisat cely subor", "Orezat (a potom prepisat)")
+        AlertDialog.Builder(this)
+            .setTitle(f.name)
+            .setItems(items) { _, i ->
+                when (i) {
+                    0 -> transcribePickedFile(f)
+                    1 -> trimDialog(f)
+                }
+            }
+            .setNegativeButton("Zrusit", null)
+            .show()
     }
 
     private fun copyUriToCache(uri: Uri): File? {
@@ -410,12 +423,23 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Prepis hocijakeho audio suboru (mp3/m4a/ogg/opus/flac/wav) cez ASR model. */
+    /** Prepis hocijakeho audio suboru (mp3/m4a/ogg/opus/flac/wav) cez ASR model.
+     *  Dekoduje sa po blokoch, aby nezdochnla pamat pri dlhych nahravkach. */
     private fun transcribeFile(f: File): String {
         val rec = recognizer ?: return ""
-        val samples = AudioDecoder.decodeToMono16k(f) ?: return ""
-        if (samples.isEmpty()) return ""
-        return runRecognizer(rec, samples)
+        val shorts = AudioDecoder.decodeToMono16kShorts(f) ?: return ""
+        if (shorts.isEmpty()) return ""
+        val block = 30 * sampleRateInHz
+        val sb = StringBuilder()
+        var i = 0
+        while (i < shorts.size) {
+            val end = minOf(i + block, shorts.size)
+            val floats = FloatArray(end - i) { shorts[i + it] / 32768.0f }
+            val t = runRecognizer(rec, floats)
+            if (t.isNotBlank()) { if (sb.isNotEmpty()) sb.append("\n"); sb.append(t.trim()) }
+            i = end
+        }
+        return sb.toString()
     }
 
     private fun runRecognizer(rec: OfflineRecognizer, samples: FloatArray): String {
@@ -431,7 +455,7 @@ class MainActivity : AppCompatActivity() {
     private fun trimDialog(src: File) {
         statusView.text = "Nacitavam audio..."
         lifecycleScope.launch(Dispatchers.IO) {
-            val samples = AudioDecoder.decodeToMono16k(src)
+            val samples = AudioDecoder.decodeToMono16kShorts(src)
             withContext(Dispatchers.Main) {
                 if (samples == null || samples.isEmpty()) { statusView.text = "Audio sa neda precitat"; toast("Neda sa dekodovat") }
                 else showTrimDialogUi(src, samples)
@@ -439,7 +463,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showTrimDialogUi(src: File, samples: FloatArray) {
+    private fun showTrimDialogUi(src: File, samples: ShortArray) {
                 val dur = samples.size / sampleRateInHz.toFloat()
                 statusView.text = String.format(Locale.US, "Dlzka: %.1f s", dur)
 
@@ -532,7 +556,7 @@ class MainActivity : AppCompatActivity() {
                 dlg.show()
     }
 
-    private fun exportRange(all: FloatArray, from: Double, to: Double): File? {
+    private fun exportRange(all: ShortArray, from: Double, to: Double): File? {
         return try {
             val s = (from * sampleRateInHz).toInt().coerceIn(0, all.size)
             val e = (to * sampleRateInHz).toInt().coerceIn(0, all.size)
@@ -933,11 +957,12 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
-/** Univerzalny audio dekoder: hocijaky format -> mono 16 kHz FloatArray. Ziadne externe kniznice. */
+/** Univerzalny audio dekoder: hocijaky format -> mono 16 kHz. Ziadne externe kniznice. */
 object AudioDecoder {
     const val SAMPLE_RATE = 16000
 
-    fun decodeToMono16k(file: File): FloatArray? {
+    /** Dekoduje cely subor do mono 16 kHz ShortArray (2 B/vzorka = 32 kB/s). */
+    fun decodeToMono16kShorts(file: File): ShortArray? {
         val extractor = MediaExtractor()
         try { extractor.setDataSource(file.absolutePath) } catch (e: Exception) { return null }
         var trackIndex = -1
@@ -962,7 +987,9 @@ object AudioDecoder {
             extractor.release(); return null
         }
 
-        val out = ArrayList<Float>(1 shl 16)
+        // zapisujeme priamo do rastuceho ShortArray buffera (bez boxovania)
+        var buf = ShortArray(1 shl 16)
+        var len = 0
         val info = MediaCodec.BufferInfo()
         var sawInputEos = false
         var sawOutputEos = false
@@ -970,8 +997,8 @@ object AudioDecoder {
             if (!sawInputEos) {
                 val inIdx = codec.dequeueInputBuffer(10000)
                 if (inIdx >= 0) {
-                    val buf = codec.getInputBuffer(inIdx)
-                    val sz = if (buf != null) extractor.readSampleData(buf, 0) else -1
+                    val ib = codec.getInputBuffer(inIdx)
+                    val sz = if (ib != null) extractor.readSampleData(ib, 0) else -1
                     if (sz < 0) {
                         codec.queueInputBuffer(inIdx, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                         sawInputEos = true
@@ -987,15 +1014,25 @@ object AudioDecoder {
                     val ob = codec.getOutputBuffer(outIdx)
                     if (ob != null) {
                         ob.position(info.offset); ob.limit(info.offset + info.size)
-                        val shorts = ShortArray(info.size / 2)
-                        ob.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(shorts)
-                        var i = 0
-                        while (i < shorts.size) {
-                            var sum = 0f
-                            var c = 0
-                            while (c < srcCh && i + c < shorts.size) { sum += shorts[i + c] / 32768.0f; c++ }
-                            out.add(if (c > 0) sum / c else 0f)
-                            i += srcCh
+                        val sh = ShortArray(info.size / 2)
+                        ob.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(sh)
+                        val monoCount = if (srcCh > 1) sh.size / srcCh else sh.size
+                        if (len + monoCount > buf.size) {
+                            var newSize = buf.size
+                            while (newSize < len + monoCount) newSize *= 2
+                            buf = buf.copyOf(newSize)
+                        }
+                        if (srcCh == 1) {
+                            System.arraycopy(sh, 0, buf, len, sh.size); len += sh.size
+                        } else {
+                            var i = 0
+                            while (i < monoCount) {
+                                var sum = 0
+                                var c = 0
+                                while (c < srcCh && i * srcCh + c < sh.size) { sum += sh[i * srcCh + c].toInt(); c++ }
+                                buf[len++] = (if (c > 0) sum / c else 0).toShort()
+                                i++
+                            }
                         }
                     }
                 }
@@ -1006,9 +1043,31 @@ object AudioDecoder {
         try { codec.stop() } catch (e: Exception) {}
         try { codec.release() } catch (e: Exception) {}
         extractor.release()
-        if (out.isEmpty()) return null
-        val mono = FloatArray(out.size) { out[it] }
-        return if (srcRate == SAMPLE_RATE) mono else resample(mono, srcRate, SAMPLE_RATE)
+        if (len == 0) return null
+        val mono = buf.copyOf(len)
+        return if (srcRate == SAMPLE_RATE) mono else resampleShort(mono, srcRate, SAMPLE_RATE)
+    }
+
+    /** Spatna kompatibilita pre orezavanie (FloatArray). */
+    fun decodeToMono16k(file: File): FloatArray? {
+        val s = decodeToMono16kShorts(file) ?: return null
+        return FloatArray(s.size) { s[it] / 32768.0f }
+    }
+
+    fun resampleShort(inp: ShortArray, from: Int, to: Int): ShortArray {
+        if (from == to || inp.isEmpty()) return inp
+        val outLen = (inp.size.toLong() * to / from).toInt()
+        if (outLen <= 0) return ShortArray(0)
+        val out = ShortArray(outLen)
+        val ratio = from.toDouble() / to
+        for (i in 0 until outLen) {
+            val pos = i * ratio
+            val i0 = pos.toInt().coerceIn(0, inp.size - 1)
+            val i1 = (i0 + 1).coerceIn(0, inp.size - 1)
+            val frac = (pos - i0).toFloat()
+            out[i] = (inp[i0] * (1 - frac) + inp[i1] * frac).toInt().toShort()
+        }
+        return out
     }
 
     fun resample(inp: FloatArray, from: Int, to: Int): FloatArray {
@@ -1039,16 +1098,17 @@ object AudioDecoder {
         o.writeBytes("data"); o.writeInt(Integer.reverseBytes(dataLen))
     }
 
-    fun writeWav16k(out: File, samples: FloatArray) {
-        val dataLen = samples.size * 2
+    fun writeWav16k(out: File, samples: ShortArray) {
         DataOutputStream(FileOutputStream(out)).use { o ->
-            writeWavHeader(o, dataLen)
+            writeWavHeader(o, samples.size * 2)
             val bb = java.nio.ByteBuffer.allocate(samples.size * 2).order(ByteOrder.LITTLE_ENDIAN)
-            for (s in samples) {
-                val v = (s * 32767f).toInt().coerceIn(-32768, 32767).toShort()
-                bb.putShort(v)
-            }
+            for (s in samples) bb.putShort(s)
             o.write(bb.array())
         }
+    }
+
+    fun writeWav16kFloat(out: File, samples: FloatArray) {
+        val sh = ShortArray(samples.size) { (samples[it] * 32767f).toInt().coerceIn(-32768, 32767).toShort() }
+        writeWav16k(out, sh)
     }
 }
