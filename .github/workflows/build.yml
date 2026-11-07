@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -122,3 +122,13 @@ jobs:
           path: sk-vad-asr.apk
           if-no-files-found: error
           retention-days: 90
+
+      - name: Publish APK to Release (public download, no token)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag: build-${{ github.run_number }}
+          name: SK diktat build ${{ github.run_number }}
+          files: sk-vad-asr.apk
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
