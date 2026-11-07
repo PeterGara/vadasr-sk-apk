@@ -961,8 +961,73 @@ class MainActivity : AppCompatActivity() {
 object AudioDecoder {
     const val SAMPLE_RATE = 16000
 
-    /** Dekoduje cely subor do mono 16 kHz ShortArray (2 B/vzorka = 32 kB/s). */
+    /** Dekoduje cely subor do mono 16 kHz ShortArray (2 B/vzorka = 32 kB/s).
+     *  WAV/PCM ("audio/raw") sa cita priamo - Android nema decoder pre audio/raw! */
     fun decodeToMono16kShorts(file: File): ShortArray? {
+        val fromExtractor = decodeViaExtractor(file)
+        if (fromExtractor != null && fromExtractor.isNotEmpty()) return fromExtractor
+        // posledna poistka: manualny WAV parser
+        return parseWavManually(file)
+    }
+
+    /** Manualny WAV (RIFF) parser - funguje vzdy, bez codecu. */
+    private fun parseWavManually(file: File): ShortArray? {
+        return try {
+            val all = file.readBytes()
+            if (all.size < 44) return null
+            if (!(all[0] == 'R'.code.toByte() && all[1] == 'I'.code.toByte() &&
+                  all[2] == 'F'.code.toByte() && all[3] == 'F'.code.toByte())) return null
+            // najdi 'fmt ' a 'data' chunky
+            var pos = 12
+            var channels = 1
+            var rate = SAMPLE_RATE
+            var bits = 16
+            var dataOff = -1
+            var dataLen = 0
+            while (pos + 8 <= all.size) {
+                val id = String(byteArrayOf(all[pos], all[pos + 1], all[pos + 2], all[pos + 3]), Charsets.US_ASCII)
+                val sz = (all[pos + 4].toInt() and 0xFF) or ((all[pos + 5].toInt() and 0xFF) shl 8) or
+                         ((all[pos + 6].toInt() and 0xFF) shl 16) or ((all[pos + 7].toInt() and 0xFF) shl 24)
+                if (id == "fmt " && pos + 8 + 16 <= all.size) {
+                    val p = pos + 8
+                    channels = ((all[p + 2].toInt() and 0xFF) or ((all[p + 3].toInt() and 0xFF) shl 8)).coerceAtLeast(1)
+                    rate = (all[p + 4].toInt() and 0xFF) or ((all[p + 5].toInt() and 0xFF) shl 8) or
+                           ((all[p + 6].toInt() and 0xFF) shl 16) or ((all[p + 7].toInt() and 0xFF) shl 24)
+                    bits = ((all[p + 14].toInt() and 0xFF) or ((all[p + 15].toInt() and 0xFF) shl 8))
+                } else if (id == "data") {
+                    dataOff = pos + 8
+                    dataLen = sz
+                    if (dataLen <= 0 || dataOff + dataLen > all.size) dataLen = all.size - dataOff
+                    break
+                }
+                pos += 8 + sz + (sz and 1)
+            }
+            if (dataOff < 0 || bits != 16) return null
+            val n = dataLen / 2
+            if (n <= 0) return null
+            val raw = ShortArray(n)
+            var i = 0
+            var o = dataOff
+            while (i < n && o + 1 < all.size) {
+                raw[i] = (((all[o].toInt() and 0xFF) or (all[o + 1].toInt() shl 8))).toShort()
+                i++; o += 2
+            }
+            val mono: ShortArray
+            if (channels == 1) mono = raw
+            else {
+                val mc = n / channels
+                mono = ShortArray(mc)
+                for (k in 0 until mc) {
+                    var sum = 0
+                    for (c in 0 until channels) sum += raw[k * channels + c].toInt()
+                    mono[k] = (sum / channels).toShort()
+                }
+            }
+            return if (rate == SAMPLE_RATE) mono else resampleShort(mono, rate, SAMPLE_RATE)
+        } catch (e: Exception) { null }
+    }
+
+    private fun decodeViaExtractor(file: File): ShortArray? {
         val extractor = MediaExtractor()
         try { extractor.setDataSource(file.absolutePath) } catch (e: Exception) { return null }
         var trackIndex = -1
@@ -978,16 +1043,33 @@ object AudioDecoder {
         val srcRate = if (format.containsKey(MediaFormat.KEY_SAMPLE_RATE)) format.getInteger(MediaFormat.KEY_SAMPLE_RATE) else SAMPLE_RATE
         val srcCh = if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else 1
 
-        val codec = try { MediaCodec.createDecoderByType(mime) } catch (e: Exception) { extractor.release(); return null }
+        // ---- WAV / PCM: ziaden codec, citaj priamo ----
+        if (mime == "audio/raw" || mime.startsWith("audio/raw")) {
+            val res = readRawPcm(extractor, srcCh)
+            extractor.release()
+            if (res == null || res.isEmpty()) return null
+            return if (srcRate == SAMPLE_RATE) res else resampleShort(res, srcRate, SAMPLE_RATE)
+        }
+
+        val codec = try { MediaCodec.createDecoderByType(mime) } catch (e: Exception) { null }
+        if (codec == null) {
+            // fallback: skus precitat ako surove PCM (napr. .pcm, divny kontajner)
+            val res = readRawPcm(extractor, srcCh)
+            extractor.release()
+            if (res == null || res.isEmpty()) return null
+            return if (srcRate == SAMPLE_RATE) res else resampleShort(res, srcRate, SAMPLE_RATE)
+        }
         try {
             codec.configure(format, null, null, 0)
             codec.start()
         } catch (e: Exception) {
             try { codec.release() } catch (x: Exception) {}
-            extractor.release(); return null
+            val res = readRawPcm(extractor, srcCh)
+            extractor.release()
+            if (res == null || res.isEmpty()) return null
+            return if (srcRate == SAMPLE_RATE) res else resampleShort(res, srcRate, SAMPLE_RATE)
         }
 
-        // zapisujeme priamo do rastuceho ShortArray buffera (bez boxovania)
         var buf = ShortArray(1 shl 16)
         var len = 0
         val info = MediaCodec.BufferInfo()
@@ -1046,6 +1128,42 @@ object AudioDecoder {
         if (len == 0) return null
         val mono = buf.copyOf(len)
         return if (srcRate == SAMPLE_RATE) mono else resampleShort(mono, srcRate, SAMPLE_RATE)
+    }
+
+    /** Precita surove PCM data priamo z extractora (WAV a pod.) a zmiesi na mono. */
+    private fun readRawPcm(extractor: MediaExtractor, srcCh: Int): ShortArray? {
+        var buf = ShortArray(1 shl 16)
+        var len = 0
+        val tmp = java.nio.ByteBuffer.allocate(1 shl 16)
+        while (true) {
+            tmp.clear()
+            val sz = extractor.readSampleData(tmp, 0)
+            if (sz < 0) break
+            tmp.position(0); tmp.limit(sz)
+            val sh = ShortArray(sz / 2)
+            tmp.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(sh)
+            val ch = if (srcCh > 0) srcCh else 1
+            val monoCount = if (ch > 1) sh.size / ch else sh.size
+            if (len + monoCount > buf.size) {
+                var ns = buf.size
+                while (ns < len + monoCount) ns *= 2
+                buf = buf.copyOf(ns)
+            }
+            if (ch == 1) {
+                System.arraycopy(sh, 0, buf, len, sh.size); len += sh.size
+            } else {
+                var i = 0
+                while (i < monoCount) {
+                    var sum = 0; var c = 0
+                    while (c < ch && i * ch + c < sh.size) { sum += sh[i * ch + c].toInt(); c++ }
+                    buf[len++] = (if (c > 0) sum / c else 0).toShort()
+                    i++
+                }
+            }
+            extractor.advance()
+        }
+        if (len == 0) return null
+        return buf.copyOf(len)
     }
 
     /** Spatna kompatibilita pre orezavanie (FloatArray). */
