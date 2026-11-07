@@ -51,7 +51,7 @@
         <Spinner android:id="@+id/sp_target" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:background="@drawable/card" />
 
-        <Button android:id="@+id/btn_dlmlkit" android:layout_width="match_parent" android:layout_height="wrap_content"
+        <android.widget.Button android:id="@+id/btn_dlmlkit" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:background="@drawable/btn_primary" android:text="Stiahnuť ML Kit model (offline)"
             android:textColor="#FFFFFF" />
 
@@ -86,9 +86,9 @@
             android:background="@drawable/card" android:hint="Operit chat_id"
             android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
 
-        <Button android:id="@+id/btn_save" android:layout_width="match_parent" android:layout_height="54dp"
+        <android.widget.Button android:id="@+id/btn_save" android:layout_width="match_parent" android:layout_height="54dp"
             android:layout_marginTop="24dp" android:background="@drawable/mic_on" android:text="ULOŽIŤ" android:textColor="#FFFFFF" />
-        <Button android:id="@+id/btn_back" android:layout_width="match_parent" android:layout_height="wrap_content"
+        <android.widget.Button android:id="@+id/btn_back" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="6dp" android:text="Späť" android:textColor="#E8ECF5" android:background="@drawable/btn_neutral" />
     </LinearLayout>
 </ScrollView>
