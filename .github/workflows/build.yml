@@ -2,8 +2,6 @@ name: build-speako-apk
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main, v6]
 
 concurrency:
   group: build-speako
