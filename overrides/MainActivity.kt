@@ -96,7 +96,6 @@ class MainActivity : AppCompatActivity() {
     private var cfgOperitToken = ""
     private var cfgOperitChatId = ""
     private var cfgBeep = true
-    private var cfgBeepVolume = 0.3f
 
     private data class Rule(val phrase: String, val action: String)
     private var rules = listOf<Rule>()
@@ -120,9 +119,37 @@ class MainActivity : AppCompatActivity() {
     )
     private val buttonViews = ArrayList<Button>()
 
-    // ---------------- pipanie ----------------
+    // ---------------- pipanie: 3 rozne tony, pocty z configu ----------------
+    // cfgBeepXxx = pocet pipnuti pre danu akciu (0 = nepipat)
+    private var cfgBeepVolume = 0.8f
+    private var cfgBeepSend = 1
+    private var cfgBeepErr = 2
+    private var cfgBeepDelVeta = 1
+    private var cfgBeepDelOdstavec = 2
+    private var cfgBeepClear = 3
+    private var cfgBeepSave = 2
+    private var cfgBeepStart = 1
+    private var cfgBeepStop = 1
+    private var cfgBeepToneMs = 200
+
+    /** Konkretny ton podla druhu akcie. */
+    private fun beepFor(kind: String) {
+        val n = when (kind) {
+            "send" -> cfgBeepSend
+            "err" -> cfgBeepErr
+            "del_veta" -> cfgBeepDelVeta
+            "del_odstavec" -> cfgBeepDelOdstavec
+            "clear" -> cfgBeepClear
+            "save" -> cfgBeepSave
+            "start" -> cfgBeepStart
+            "stop" -> cfgBeepStop
+            else -> 1
+        }
+        beep(n)
+    }
+
     private fun beep(times: Int) {
-        if (!cfgBeep) return
+        if (!cfgBeep || times <= 0) return
         try {
             ui.post {
                 if (toneGen == null) {
@@ -132,14 +159,9 @@ class MainActivity : AppCompatActivity() {
                 var n = 0
                 val tick = object : Runnable {
                     override fun run() {
-                        try { toneGen?.startTone(ToneGenerator.TONE_PROP_ACK, 200) } catch (e: Exception) {}
-                        try {
-                            val v = getSystemService(VIBRATOR_SERVICE) as android.os.Vibrator
-                            @Suppress("DEPRECATION")
-                            v.vibrate(50)
-                        } catch (e: Exception) {}
+                        try { toneGen?.startTone(ToneGenerator.TONE_PROP_ACK, cfgBeepToneMs) } catch (e: Exception) {}
                         n++
-                        if (n < times) ui.postDelayed(this, 260)
+                        if (n < times) ui.postDelayed(this, (cfgBeepToneMs + 60).toLong())
                     }
                 }
                 ui.post(tick)
@@ -266,6 +288,15 @@ class MainActivity : AppCompatActivity() {
                     "operit_chat_id" -> cfgOperitChatId = v
                     "beep" -> cfgBeep = v.equals("true", true)
                     "beep_volume" -> cfgBeepVolume = v.toFloatOrNull() ?: cfgBeepVolume
+                    "beep_tone_ms" -> cfgBeepToneMs = v.toIntOrNull() ?: cfgBeepToneMs
+                    "beep_send" -> cfgBeepSend = v.toIntOrNull() ?: cfgBeepSend
+                    "beep_err" -> cfgBeepErr = v.toIntOrNull() ?: cfgBeepErr
+                    "beep_del_veta" -> cfgBeepDelVeta = v.toIntOrNull() ?: cfgBeepDelVeta
+                    "beep_del_odstavec" -> cfgBeepDelOdstavec = v.toIntOrNull() ?: cfgBeepDelOdstavec
+                    "beep_clear" -> cfgBeepClear = v.toIntOrNull() ?: cfgBeepClear
+                    "beep_save" -> cfgBeepSave = v.toIntOrNull() ?: cfgBeepSave
+                    "beep_start" -> cfgBeepStart = v.toIntOrNull() ?: cfgBeepStart
+                    "beep_stop" -> cfgBeepStop = v.toIntOrNull() ?: cfgBeepStop
                 }
             }
         } catch (e: Exception) { Log.e(TAG, "config err: $e") }
@@ -294,7 +325,7 @@ class MainActivity : AppCompatActivity() {
             val bm = if (b.exists()) b.lastModified() else 0L
             if (cm != cfgMtime || dm != cmdMtime || bm != btnMtime) {
                 loadConfig(); loadCommands(); loadButtons()
-                beep(1)
+                beepFor("send")
                 runOnUiThread { textView.append("\n[konfig nacitany]") }
             }
         } catch (e: Exception) { }
@@ -370,7 +401,7 @@ class MainActivity : AppCompatActivity() {
         if (undoStack.isEmpty()) return
         redoStack.addLast(segments.joinToString("\n"))
         restore(undoStack.removeLast())
-        beep(1)
+        beepFor("del_veta")
         runOnUiThread { textView.append("\n[spat]") }
     }
 
@@ -378,36 +409,36 @@ class MainActivity : AppCompatActivity() {
         if (redoStack.isEmpty()) return
         undoStack.addLast(segments.joinToString("\n"))
         restore(redoStack.removeLast())
-        beep(1)
+        beepFor("send")
         runOnUiThread { textView.append("\n[znova]") }
     }
 
     /** zmaze poslednu vetu (segment) */
     private fun doDelVeta() {
-        if (segments.isEmpty()) { beep(2); return }
+        if (segments.isEmpty()) { beepFor("err"); return }
         pushHistory()
         segments.removeAt(segments.lastIndex)
         if (sentCount > segments.size) sentCount = segments.size
-        persist(); beep(1)
+        persist(); beepFor("del_veta")
         runOnUiThread { render(); updateStatus(); textView.append("\n[zmazana veta]") }
     }
 
     /** zmaze posledny odstavec (skupina viet od posledneho prazdneho riadku) */
     private fun doDelOdstavec() {
-        if (segments.isEmpty()) { beep(2); return }
+        if (segments.isEmpty()) { beepFor("err"); return }
         pushHistory()
         var i = segments.size - 1
         while (i >= 0 && segments[i].isBlank()) { segments.removeAt(i); i-- }
         while (i >= 0 && segments[i].isNotBlank()) { segments.removeAt(i); i-- }
         if (sentCount > segments.size) sentCount = segments.size
-        persist(); beep(2)
+        persist(); beepFor("del_odstavec")
         runOnUiThread { render(); updateStatus(); textView.append("\n[zmazany odstavec]") }
     }
 
     private fun doClear() {
         if (segments.isEmpty()) return
         pushHistory(); segments.clear(); sentCount = 0; persist()
-        beep(3)
+        beepFor("clear")
         runOnUiThread { render(); updateStatus(); textView.append("\n[vymazane]") }
     }
 
@@ -477,7 +508,7 @@ class MainActivity : AppCompatActivity() {
     private fun sendToOperit(all: Boolean) {
         val from = if (all) 0 else sentCount
         if (segments.size <= from) {
-            beep(2)
+            beepFor("err")
             runOnUiThread { Toast.makeText(this, "Nic nove na odoslanie", Toast.LENGTH_SHORT).show() }
             return
         }
@@ -486,7 +517,7 @@ class MainActivity : AppCompatActivity() {
             val ok = httpSend(newText)
             if (ok) sentCount = segments.size
             runOnUiThread {
-                if (ok) beep(1) else beep(2)
+                if (ok) beepFor("send") else beepFor("err")
                 textView.post {
                     textView.append(if (ok) "\n[odoslane OK]" else "\n[CHYBA odoslania: token/port?]")
                 }
@@ -544,9 +575,9 @@ class MainActivity : AppCompatActivity() {
     /** vlozi text do aktivnej appky (cez accessibility) */
     private fun doPasteToApp() {
         val text = segments.joinToString("\n")
-        if (text.isBlank()) { beep(2); return }
+        if (text.isBlank()) { beepFor("err"); return }
         val ok = SpeakAccessibilityService.instance?.pasteText(text) ?: false
-        beep(if (ok) 1 else 2)
+        beepFor(if (ok) "send" else "err")
         runOnUiThread {
             Toast.makeText(this, if (ok) "Vlozene do aktivnej appky" else "Accessibility nie je zapnuta", Toast.LENGTH_SHORT).show()
         }
@@ -556,7 +587,7 @@ class MainActivity : AppCompatActivity() {
         try {
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             cm.setPrimaryClip(ClipData.newPlainText("diktat", segments.joinToString("\n")))
-            beep(1)
+            beepFor("send")
             runOnUiThread { Toast.makeText(this, "Skopirovane", Toast.LENGTH_SHORT).show() }
         } catch (e: Exception) { Log.e(TAG, "copy err: $e") }
     }
@@ -576,11 +607,11 @@ class MainActivity : AppCompatActivity() {
     private fun doSave(notify: Boolean) {
         val f = sessionFile
         if (f == null || !f.exists() || f.length() == 0L) {
-            beep(2)
+            beepFor("err")
             runOnUiThread { textView.append("\n[Nie je co ulozit]") }; return
         }
         if (notify) notifyText("Diktat ulozeny", segments.joinToString("\n"))
-        beep(2)
+        beepFor("save")
         runOnUiThread { textView.append("\n[Ulozene: ${f.name}]") }
     }
 
@@ -591,7 +622,7 @@ class MainActivity : AppCompatActivity() {
             val name = "diktat_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".txt"
             val out = File(outDir, name)
             out.writeText(segments.joinToString("\n"), Charsets.UTF_8)
-            beep(2)
+            beepFor("save")
             runOnUiThread {
                 Toast.makeText(this, "Ulozene do Documents/Diktat", Toast.LENGTH_LONG).show()
                 textView.append("\n[Ulozene: ${out.absolutePath}]")
@@ -699,7 +730,7 @@ class MainActivity : AppCompatActivity() {
             persist(); render(); lastNotifyAt = 0
             if (cfgKeepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             vad.reset()
-            beep(1)
+            beepFor("start")
             recordingThread = thread(true) { processSamples() }
         } else {
             isRecording = false
@@ -708,7 +739,7 @@ class MainActivity : AppCompatActivity() {
             audioRecord?.stop(); audioRecord?.release(); audioRecord = null
             recordButton.setText(R.string.start)
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            beep(1)
+            beepFor("stop")
         }
         updateStatus()
     }
