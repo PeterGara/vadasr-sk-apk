@@ -10,10 +10,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.ToneGenerator
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.method.ScrollingMovementMethod
 import android.util.Log
 import android.view.WindowManager
@@ -23,6 +27,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.lifecycle.lifecycleScope
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
 import com.k2fsa.sherpa.onnx.R
@@ -36,7 +41,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.concurrent.thread
-import androidx.lifecycle.lifecycleScope
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStreamWriter
@@ -50,7 +54,6 @@ import java.util.Locale
 private const val TAG = "sherpa-onnx"
 private const val REQUEST_RECORD_AUDIO_PERMISSION = 200
 
-// v5: "Posli" posle LEN NOVE casti (od posledneho poslania) a to OKAMZITE (sync + vlastny callback).
 class MainActivity : AppCompatActivity() {
 
     private lateinit var recordButton: Button
@@ -68,7 +71,6 @@ class MainActivity : AppCompatActivity() {
 
     private var sessionFile: File? = null
     private val segments = ArrayList<String>()
-    // kolko segmentov uz bolo odoslanych ("Posli" posle len nove)
     private var sentCount = 0
 
     private val undoStack = ArrayDeque<String>()
@@ -82,7 +84,9 @@ class MainActivity : AppCompatActivity() {
     private var cfgKeepScreenOn = true
     private var cfgOperitPort = "8094"
     private var cfgOperitToken = ""
-    private var cfgOperitChatId = "e2b301b9-aba0-4d0b-805f-49bdbac6c406"
+    private var cfgOperitChatId = ""
+    private var cfgBeep = true
+    private var cfgBeepVolume = 0.3f
 
     private data class Rule(val phrase: String, val action: String)
     private var rules = listOf<Rule>()
@@ -91,8 +95,11 @@ class MainActivity : AppCompatActivity() {
 
     private var lastNotifyAt = 0L
 
-    @Volatile
-    private var isRecording = false
+    @Volatile private var isRecording = false
+    @Volatile private var wantRecording = false
+
+    private var toneGen: ToneGenerator? = null
+    private val ui = Handler(Looper.getMainLooper())
 
     private data class BtnCfg(val label: String, val action: String)
     private val buttonActions = HashMap<Int, BtnCfg>()
@@ -102,6 +109,27 @@ class MainActivity : AppCompatActivity() {
         R.id.btn_5, R.id.btn_6, R.id.btn_7, R.id.btn_8
     )
     private val buttonViews = ArrayList<Button>()
+
+    private fun beep(times: Int) {
+        if (!cfgBeep) return
+        try {
+            ui.post {
+                if (toneGen == null) {
+                    val vol = (cfgBeepVolume * 100).toInt().coerceIn(1, 100)
+                    toneGen = ToneGenerator(AudioManager.STREAM_MUSIC, vol)
+                }
+                var n = 0
+                val tick = object : Runnable {
+                    override fun run() {
+                        try { toneGen?.startTone(ToneGenerator.TONE_PROP_BEEP, 110) } catch (e: Exception) {}
+                        n++
+                        if (n < times) ui.postDelayed(this, 170)
+                    }
+                }
+                ui.post(tick)
+            }
+        } catch (e: Exception) { Log.e(TAG, "beep err: $e") }
+    }
 
     private fun buttonsFile(): File = File(filesDirCfg(), "buttons.txt")
 
@@ -159,7 +187,9 @@ class MainActivity : AppCompatActivity() {
             "keep_screen_on=true\n" +
             "operit_port=8094\n" +
             "operit_token=SEM_VLOZ_TOKEN\n" +
-            "operit_chat_id=e2b301b9-aba0-4d0b-805f-49bdbac6c406\n",
+            "operit_chat_id=\n" +
+            "beep=true\n" +
+            "beep_volume=0.3\n",
             Charsets.UTF_8
         )
     }
@@ -167,20 +197,24 @@ class MainActivity : AppCompatActivity() {
     private fun writeDefaultCommands() {
         commandsFile().writeText(
             "# === PRAVIDLA: fraza | akcia ===\n" +
-            "prec vetu|undo\n" +
+            "prec vetu|del_veta\n" +
+            "cela veta|del_veta\n" +
+            "cela vetu|del_veta\n" +
+            "zmaz vetu|del_veta\n" +
+            "cely odstavec|del_odstavec\n" +
+            "zmaz odstavec|del_odstavec\n" +
+            "vymaz vsetko|clear\n" +
+            "posli|send_new\n" +
+            "posli vsetko|send_all\n" +
             "vrat to|redo\n" +
             "novy odstavec|paragraph\n" +
-            "posli|send_chat\n" +
-            "posli do operitu|send_chat\n" +
-            "novy|send_chat\n" +
-            "vymaz vsetko|clear\n" +
-            "zmaz poslednu|del_last\n" +
             "uloz to|save\n" +
             "uloz do suboru|save_public\n" +
             "skopiruj|copy\n" +
             "zdielaj|share\n" +
             "daj vediet|notify\n" +
-            "cas|time\n",
+            "cas|time\n" +
+            "stop|stop\n",
             Charsets.UTF_8
         )
     }
@@ -214,6 +248,8 @@ class MainActivity : AppCompatActivity() {
                     "operit_port" -> cfgOperitPort = v
                     "operit_token" -> cfgOperitToken = v
                     "operit_chat_id" -> cfgOperitChatId = v
+                    "beep" -> cfgBeep = v.equals("true", true)
+                    "beep_volume" -> cfgBeepVolume = v.toFloatOrNull() ?: cfgBeepVolume
                 }
             }
         } catch (e: Exception) { Log.e(TAG, "config err: $e") }
@@ -242,6 +278,7 @@ class MainActivity : AppCompatActivity() {
             val bm = if (b.exists()) b.lastModified() else 0L
             if (cm != cfgMtime || dm != cmdMtime || bm != btnMtime) {
                 loadConfig(); loadCommands(); loadButtons()
+                beep(1)
                 runOnUiThread { textView.append("\n[konfig nacitany]") }
             }
         } catch (e: Exception) { }
@@ -309,6 +346,7 @@ class MainActivity : AppCompatActivity() {
     private fun restore(state: String) {
         segments.clear()
         if (state.isNotEmpty()) state.split("\n").forEach { segments.add(it) }
+        if (sentCount > segments.size) sentCount = segments.size
         persist(); runOnUiThread { render(); updateStatus() }
     }
 
@@ -316,6 +354,7 @@ class MainActivity : AppCompatActivity() {
         if (undoStack.isEmpty()) return
         redoStack.addLast(segments.joinToString("\n"))
         restore(undoStack.removeLast())
+        beep(1)
         runOnUiThread { textView.append("\n[spat]") }
     }
 
@@ -323,23 +362,46 @@ class MainActivity : AppCompatActivity() {
         if (redoStack.isEmpty()) return
         undoStack.addLast(segments.joinToString("\n"))
         restore(redoStack.removeLast())
+        beep(1)
         runOnUiThread { textView.append("\n[znova]") }
     }
 
-    private fun doDelLast() {
-        if (segments.isEmpty()) { runOnUiThread { Toast.makeText(this, "Prazdne", Toast.LENGTH_SHORT).show() } ; return }
+    private fun doDelVeta() {
+        if (segments.isEmpty()) { beep(2); return }
         pushHistory()
         segments.removeAt(segments.lastIndex)
-        // ked zmazeme odoslane, znizime pocitadlo
         if (sentCount > segments.size) sentCount = segments.size
-        persist(); runOnUiThread { render(); updateStatus(); textView.append("\n[zmazana posledna]") }
+        persist(); beep(1)
+        runOnUiThread { render(); updateStatus(); textView.append("\n[zmazana veta]") }
+    }
+
+    private fun doDelOdstavec() {
+        if (segments.isEmpty()) { beep(2); return }
+        pushHistory()
+        var i = segments.size - 1
+        while (i >= 0 && segments[i].isBlank()) { segments.removeAt(i); i-- }
+        while (i >= 0 && segments[i].isNotBlank()) { segments.removeAt(i); i-- }
+        if (sentCount > segments.size) sentCount = segments.size
+        persist(); beep(2)
+        runOnUiThread { render(); updateStatus(); textView.append("\n[zmazany odstavec]") }
+    }
+
+    private fun doClear() {
+        if (segments.isEmpty()) return
+        pushHistory(); segments.clear(); sentCount = 0; persist()
+        beep(3)
+        runOnUiThread { render(); updateStatus(); textView.append("\n[vymazane]") }
     }
 
     private fun runAction(action: String) {
         when {
+            action == "send_new" -> sendToOperit(all = false)
+            action == "send_all" -> sendToOperit(all = true)
             action == "undo" -> doUndo()
             action == "redo" -> doRedo()
-            action == "del_last" -> doDelLast()
+            action == "del_veta" -> doDelVeta()
+            action == "del_odstavec" -> doDelOdstavec()
+            action == "clear" -> doClear()
             action == "paragraph" -> {
                 pushHistory(); segments.add(""); persist()
                 runOnUiThread { render(); updateStatus() }
@@ -347,10 +409,6 @@ class MainActivity : AppCompatActivity() {
             action == "stop" -> runOnUiThread { if (isRecording) toggleRecord() }
             action == "save" -> runOnUiThread { doSave(notify = true) }
             action == "save_public" -> runOnUiThread { doSavePublic() }
-            action == "clear" -> {
-                pushHistory(); segments.clear(); sentCount = 0; persist()
-                runOnUiThread { render(); updateStatus(); textView.append("\n[vymazane]") }
-            }
             action == "notify" -> notifyIfNeeded(force = true)
             action == "copy" -> doCopy()
             action == "share" -> doShare()
@@ -359,8 +417,11 @@ class MainActivity : AppCompatActivity() {
                 segments.add("[" + SimpleDateFormat("HH:mm", Locale.US).format(Date()) + "]")
                 persist(); runOnUiThread { render(); updateStatus() }
             }
-            action == "send_chat" -> sendToOperit()
             action == "noop" -> { }
+            action.startsWith("beep:") -> {
+                val n = action.removePrefix("beep:").trim().toIntOrNull() ?: 1
+                beep(n)
+            }
             action.startsWith("append:") -> {
                 pushHistory(); segments.add(action.removePrefix("append:")); persist()
                 runOnUiThread { render(); updateStatus() }
@@ -393,33 +454,23 @@ class MainActivity : AppCompatActivity() {
         notifyIfNeeded(force = false)
     }
 
-    /** Posle LEN NOVE segmenty (od posledneho odoslania) a hned sa vráti. */
-    private fun sendToOperit() {
-        if (segments.size <= sentCount) {
-            runOnUiThread { Toast.makeText(this, "Nic nove", Toast.LENGTH_SHORT).show() }
+    private fun sendToOperit(all: Boolean) {
+        val from = if (all) 0 else sentCount
+        if (segments.size <= from) {
+            beep(2)
+            runOnUiThread { Toast.makeText(this, "Nic nove na odoslanie", Toast.LENGTH_SHORT).show() }
             return
         }
-        val newText = segments.subList(sentCount, segments.size).joinToString("\n")
-        val newFrom = sentCount
-
-        try {
-            val dir = diktatDir()
-            var p = sessionFile?.absolutePath
-            if (p == null || !File(p).exists()) {
-                p = dir.listFiles()?.maxByOrNull { it.lastModified() }?.absolutePath
-            }
-            if (p != null) File(dir, "SENDME.txt").writeText(p)
-        } catch (e: Exception) { }
-
+        val newText = segments.subList(from, segments.size).joinToString("\n")
         thread(true) {
             val ok = httpSend(newText)
             if (ok) sentCount = segments.size
             runOnUiThread {
+                if (ok) beep(1) else beep(2)
                 textView.post {
-                    textView.append(if (ok) "\n[odoslane OK]" else "\n[CHYBA: token/port?]")
+                    textView.append(if (ok) "\n[odoslane OK]" else "\n[CHYBA odoslania: token\/port?]")
                 }
                 updateStatus()
-                Toast.makeText(this, if (ok) "Poslane do Operitu" else "Odoslanie zlyhalo", Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -430,20 +481,19 @@ class MainActivity : AppCompatActivity() {
                 Log.e(TAG, "operit_token nie je nastaveny v config.txt")
                 return false
             }
-            // async_callback = posle sa hned, caka sa len na accepted (neblokuje na odpovedi AI)
             val json = "{\"message\":\"" + esc(message) + "\"," +
                     "\"response_mode\":\"async_callback\"," +
-                    "\"callback_url\":\"http://127.0.0.1:1/cb\"," +
+                    "\"callback_url\":\"http:\/\/127.0.0.1:1\/cb\"," +
                     "\"show_floating\":false," +
                     "\"return_tool_status\":false," +
                     "\"chat_id\":\"" + esc(cfgOperitChatId) + "\"}"
-            val url = URL("http://127.0.0.1:" + cfgOperitPort + "/api/external-chat")
+            val url = URL("http:\/\/127.0.0.1:" + cfgOperitPort + "\/api\/external-chat")
             val c = url.openConnection() as HttpURLConnection
             c.requestMethod = "POST"
             c.doOutput = true
             c.connectTimeout = 8000
             c.readTimeout = 20000
-            c.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            c.setRequestProperty("Content-Type", "application\/json; charset=utf-8")
             c.setRequestProperty("Authorization", "Bearer " + cfgOperitToken)
             OutputStreamWriter(c.outputStream, Charsets.UTF_8).use { it.write(json) }
             val code = c.responseCode
@@ -475,6 +525,7 @@ class MainActivity : AppCompatActivity() {
         try {
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             cm.setPrimaryClip(ClipData.newPlainText("diktat", segments.joinToString("\n")))
+            beep(1)
             runOnUiThread { Toast.makeText(this, "Skopirovane", Toast.LENGTH_SHORT).show() }
         } catch (e: Exception) { Log.e(TAG, "copy err: $e") }
     }
@@ -484,7 +535,7 @@ class MainActivity : AppCompatActivity() {
         if (text.isBlank()) return
         try {
             val i = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
+                type = "text\/plain"
                 putExtra(Intent.EXTRA_TEXT, text)
             }
             runOnUiThread { startActivity(Intent.createChooser(i, "Zdielat diktat")) }
@@ -494,42 +545,45 @@ class MainActivity : AppCompatActivity() {
     private fun doSave(notify: Boolean) {
         val f = sessionFile
         if (f == null || !f.exists() || f.length() == 0L) {
+            beep(2)
             runOnUiThread { textView.append("\n[Nie je co ulozit]") }; return
         }
         if (notify) notifyText("Diktat ulozeny", segments.joinToString("\n"))
+        beep(2)
         runOnUiThread { textView.append("\n[Ulozene: ${f.name}]") }
     }
 
     private fun doSavePublic() {
         try {
-            val outDir = File("/sdcard/Documents/Diktat")
+            val outDir = File("\/sdcard\/Documents\/Diktat")
             if (!outDir.exists()) outDir.mkdirs()
             val name = "diktat_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".txt"
             val out = File(outDir, name)
             out.writeText(segments.joinToString("\n"), Charsets.UTF_8)
+            beep(2)
             runOnUiThread {
-                Toast.makeText(this, "Ulozene do Documents/Diktat", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Ulozene do Documents\/Diktat", Toast.LENGTH_LONG).show()
                 textView.append("\n[Ulozene: ${out.absolutePath}]")
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "save_public err: $e")
-        }
+        } catch (e: Exception) { Log.e(TAG, "save_public err: $e") }
     }
 
     private fun showMenu() {
-        val items = arrayOf("Poslat NOVE do Operitu", "Poslat VSETKO do Operitu", "Zmazat cely text", "Zmazat poslednu vlozenu",
+        val items = arrayOf("Poslat NOVE do Operitu", "Poslat VSETKO do Operitu",
+            "Zmazat vetu", "Zmazat odstavec", "Zmazat vsetko",
             "Spat (undo)", "Znova (redo)", "Ulozit TXT", "Kopirovat", "Zdielat", "Notifikacia")
         AlertDialog.Builder(this).setTitle("Menu").setItems(items) { _, i -> when (i) {
-            0 -> sendToOperit()
-            1 -> { sentCount = 0; sendToOperit() }
-            2 -> runAction("clear")
-            3 -> doDelLast()
-            4 -> doUndo()
-            5 -> doRedo()
-            6 -> doSavePublic()
-            7 -> doCopy()
-            8 -> doShare()
-            9 -> notifyIfNeeded(force = true)
+            0 -> sendToOperit(false)
+            1 -> sendToOperit(true)
+            2 -> doDelVeta()
+            3 -> doDelOdstavec()
+            4 -> doClear()
+            5 -> doUndo()
+            6 -> doRedo()
+            7 -> doSavePublic()
+            8 -> doCopy()
+            9 -> doShare()
+            10 -> notifyIfNeeded(force = true)
         } }.show()
     }
 
@@ -554,9 +608,9 @@ class MainActivity : AppCompatActivity() {
         recordButton.setOnClickListener { toggleRecord() }
 
         findViewById<Button>(R.id.btn_menu).setOnClickListener { showMenu() }
-        findViewById<Button>(R.id.act_send).setOnClickListener { sendToOperit() }
-        findViewById<Button>(R.id.act_clear).setOnClickListener { runAction("clear") }
-        findViewById<Button>(R.id.act_dellast).setOnClickListener { doDelLast() }
+        findViewById<Button>(R.id.act_send).setOnClickListener { sendToOperit(false) }
+        findViewById<Button>(R.id.act_clear).setOnClickListener { doClear() }
+        findViewById<Button>(R.id.act_dellast).setOnClickListener { doDelVeta() }
 
         buttonViews.clear()
         buttonIds.forEach { id ->
@@ -570,6 +624,8 @@ class MainActivity : AppCompatActivity() {
         }
         loadButtons()
 
+        startWatchdog()
+
         textView.text = "Inicializujem modely..."
         lifecycleScope.launch(Dispatchers.IO) {
             initVadModel(); initOfflineRecognizer()
@@ -581,6 +637,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun startWatchdog() {
+        ui.postDelayed(object : Runnable {
+            override fun run() {
+                try {
+                    if (wantRecording && !isRecording && recordButton.isEnabled) {
+                        Log.i(TAG, "watchdog: obnovujem nahravanie")
+                        toggleRecord()
+                    }
+                } catch (e: Exception) {}
+                ui.postDelayed(this, 5000)
+            }
+        }, 5000)
+    }
+
     private fun toggleRecord() {
         if (!isRecording) {
             if (!initMicrophone()) return
@@ -589,18 +659,22 @@ class MainActivity : AppCompatActivity() {
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(svc) else startService(svc)
             recordButton.setText(R.string.stop)
             isRecording = true
+            wantRecording = true
             segments.clear(); undoStack.clear(); redoStack.clear(); sentCount = 0
             sessionFile = File(diktatDir(), "diktat_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".txt")
             persist(); render(); lastNotifyAt = 0
             if (cfgKeepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             vad.reset()
+            beep(1)
             recordingThread = thread(true) { processSamples() }
         } else {
             isRecording = false
-            stopService(Intent(this, DiktatService::class.java))
-            audioRecord!!.stop(); audioRecord!!.release(); audioRecord = null
+            wantRecording = false
+            try { stopService(Intent(this, DiktatService::class.java)) } catch (e: Exception) {}
+            audioRecord?.stop(); audioRecord?.release(); audioRecord = null
             recordButton.setText(R.string.start)
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            beep(1)
         }
         updateStatus()
     }
@@ -665,5 +739,10 @@ class MainActivity : AppCompatActivity() {
         val result = offlineRecognizer.getResult(stream)
         stream.release()
         return result.text
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        try { toneGen?.release() } catch (e: Exception) {}
     }
 }
