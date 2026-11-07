@@ -48,14 +48,17 @@ jobs:
           A=src/android/SherpaOnnxVadAsr/app/src/main
           cp -v ovr/overrides/MainActivity.kt $A/java/com/k2fsa/sherpa/onnx/MainActivity.kt
           cp -v ovr/overrides/Settings.kt $A/java/com/k2fsa/sherpa/onnx/Settings.kt
+          cp -v ovr/overrides/Translate.kt $A/java/com/k2fsa/sherpa/onnx/Translate.kt
           cp -v ovr/overrides/SettingsActivity.kt $A/java/com/k2fsa/sherpa/onnx/SettingsActivity.kt
           cp -v ovr/overrides/DiktatService.kt $A/java/com/k2fsa/sherpa/onnx/DiktatService.kt
           cp -v ovr/overrides/SpeakAccessibilityService.kt $A/java/com/k2fsa/sherpa/onnx/SpeakAccessibilityService.kt
-          rm -f $A/java/com/k2fsa/sherpa/onnx/ApiClient.kt $A/java/com/k2fsa/sherpa/onnx/Settings_old.kt
+          rm -f $A/java/com/k2fsa/sherpa/onnx/ApiClient.kt
           cp -v ovr/overrides/activity_main.xml $A/res/layout/activity_main.xml
           cp -v ovr/overrides/activity_settings.xml $A/res/layout/activity_settings.xml
+          cp -v ovr/overrides/spinner_item.xml $A/res/layout/spinner_item.xml
           cp -v ovr/overrides/accessibility_service_config.xml $A/res/xml/accessibility_service_config.xml
           cp -v ovr/overrides/AndroidManifest.xml $A/AndroidManifest.xml
+          cp -v ovr/app_build.gradle src/android/SherpaOnnxVadAsr/app/build.gradle
 
       - name: Insert SK Parakeet model into assets
         working-directory: src
