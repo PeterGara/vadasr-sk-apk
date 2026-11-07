@@ -433,7 +433,13 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             val samples = AudioDecoder.decodeToMono16k(src)
             withContext(Dispatchers.Main) {
-                if (samples == null || samples.isEmpty()) { statusView.text = "Audio sa neda precitat"; toast("Neda sa dekodovat"); return@withContext }
+                if (samples == null || samples.isEmpty()) { statusView.text = "Audio sa neda precitat"; toast("Neda sa dekodovat") }
+                else showTrimDialogUi(src, samples)
+            }
+        }
+    }
+
+    private fun showTrimDialogUi(src: File, samples: FloatArray) {
                 val dur = samples.size / sampleRateInHz.toFloat()
                 statusView.text = String.format(Locale.US, "Dlzka: %.1f s", dur)
 
@@ -524,8 +530,6 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 dlg.show()
-            }
-        }
     }
 
     private fun exportRange(all: FloatArray, from: Double, to: Double): File? {
