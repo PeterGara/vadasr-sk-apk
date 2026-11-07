@@ -25,6 +25,7 @@ import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.lifecycle.lifecycleScope
 import com.k2fsa.sherpa.onnx.*
 import kotlinx.coroutines.*
 import java.io.File
@@ -32,8 +33,8 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.*
 
-private const val TAG = "Speak-o"
-private const val REQ_MIC = 200
+private const val TAG2 = "Speak-o"
+private const val REQ_MIC2 = 200
 
 class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
@@ -77,7 +78,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
         bigBtn.isEnabled = false
         bigBtn.setOnClickListener { toggleRecord() }
-        langBtn.text = Settings.asrLang.uppercase() + " \u25be"
+        langBtn.text = Settings.asrLang.uppercase() + " v"
         langBtn.setOnClickListener { pickLanguage() }
         findViewById<Button>(R.id.btn_settings).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
@@ -93,22 +94,22 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         status.text = "Inicializujem modely..."
         lifecycleScope.launch(Dispatchers.IO) {
             initVad(); initAsr()
-            withContext(Dispatchers.Main) { bigBtn.isEnabled = true; status.text = "Pripraven\u00e9" }
+            withContext(Dispatchers.Main) { bigBtn.isEnabled = true; status.text = "Pripravene" }
         }
     }
 
     private fun pickLanguage() {
         val langs = arrayOf("SK", "EN", "DE", "FR", "ES")
-        AlertDialog.Builder(this).setTitle("Jazyk rozpozn\u00e1vania").setItems(langs) { _, i ->
+        AlertDialog.Builder(this).setTitle("Jazyk rozpoznavania").setItems(langs) { _, i ->
             Settings.asrLang = langs[i].lowercase(); Settings.save()
-            langBtn.text = langs[i] + " \u25be"
-            status.text = "Nac\u00edtavam ${langs[i]} model..."
-            lifecycleScope.launch(Dispatchers.IO) { initAsr(); withContext(Dispatchers.Main) { status.text = "Pripraven\u00e9 (${langs[i]})" } }
+            langBtn.text = langs[i] + " v"
+            status.text = "Nacitavam ${langs[i]} model..."
+            lifecycleScope.launch(Dispatchers.IO) { initAsr(); withContext(Dispatchers.Main) { status.text = "Pripravene (${langs[i]})" } }
         }.show()
     }
 
     private fun showMenu() {
-        val items = arrayOf("Kop\u00edrova\u0165", "Zdie\u013ea\u0165", "Notifik\u00e1cia", "\u010c\u00edta\u0165 (TTS)", "Striha\u0165 nahr\u00e1vku", "Ulo\u017ei\u0165 TXT", "Vymaza\u0165 text", "Sp\u00e4\u0165")
+        val items = arrayOf("Kopirovat", "Zdielat", "Notifikacia", "Citat (TTS)", "Strihat nahravku", "Ulozit TXT", "Vymazat text", "Spat")
         AlertDialog.Builder(this).setTitle("Menu").setItems(items) { _, i -> when (i) {
             0 -> copyText(); 1 -> shareText(); 2 -> notifyText(edit.text.toString())
             3 -> speak(edit.text.toString()); 4 -> trimAudio(); 5 -> saveTxt(); 6 -> edit.setText(""); 7 -> doUndo()
@@ -119,7 +120,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     private fun startRec() {
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, perms, REQ_MIC); return
+            ActivityCompat.requestPermissions(this, perms, REQ_MIC2); return
         }
         val min = AudioRecord.getMinBufferSize(sampleRate, channel, format)
         audioRecord = AudioRecord(audioSource, sampleRate, channel, format, min * 2)
@@ -133,7 +134,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         recording = true; bigBtn.text = "STOP"
         if (Settings.keepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         Thread { loop() }.start()
-        status.text = "Nahr\u00e1vam..."
+        status.text = "Nahravam..."
     }
 
     private fun stopRec() {
@@ -141,7 +142,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         try { stopService(Intent(this, DiktatService::class.java)) } catch (e: Exception) {}
         audioRecord?.stop(); audioRecord?.release(); audioRecord = null
         try { pcmOut?.close() } catch (e: Exception) {}; pcmOut = null
-        bigBtn.text = "NAHR\u00c1VA\u0164"
+        bigBtn.text = "NAHRAVAT"
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         status.text = "Hotovo"
     }
@@ -162,7 +163,8 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
                 } catch (e: Exception) {}
                 while (!vad.empty()) {
                     val seg = vad.front()
-                    scope.launch { val t = recognize(seg.samples); if (t.isNotBlank()) main.post { appendText(t) } }
+                    val smp = seg.samples
+                    scope.launch { val t = recognize(smp); if (t.isNotBlank()) main.post { appendText(t) } }
                     vad.pop()
                 }
             }
@@ -183,7 +185,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
             o.write("fmt ".toByteArray()); l32(16); l16(1); l16(1); l32(sampleRate); l32(sampleRate*2); l16(2); l16(16)
             o.write("data".toByteArray()); l32(len)
             raf.write(o.toByteArray()); raf.close()
-        } catch (e: Exception) { Log.e(TAG, "wav: $e") }
+        } catch (e: Exception) { Log.e(TAG2, "wav: $e") }
     }
 
     private fun appendText(t: String) {
@@ -216,17 +218,17 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private fun doSend() {
         val t = edit.text.toString(); if (t.isBlank()) return
         status.text = "Posielam do Operitu..."
-        Thread { val ok = ApiClient.sendToOperit(t); main.post { status.text = if (ok) "Odoslan\u00e9 \u2713" else "Chyba (Operit?)" } }.start()
+        Thread { val ok = ApiClient.sendToOperit(t); main.post { status.text = if (ok) "Odoslane OK" else "Chyba (Operit?)" } }.start()
     }
 
     private fun doTranslate() {
         val t = edit.text.toString(); if (t.isBlank()) return
-        if (Settings.providers.isEmpty()) { toast("Pridaj API v nastaveniach \u2699"); return }
+        if (Settings.providers.isEmpty()) { toast("Pridaj API v nastaveniach"); return }
         val p = Settings.providers.getOrNull(Settings.translateProviderIndex) ?: return
-        status.text = "Preklad\u00e1m..."
+        status.text = "Prekladam..."
         Thread {
             val out = ApiClient.translate(p, Settings.translateSystemPrompt + " Target language: " + Settings.translateTarget, t)
-            main.post { if (out != null) { push(); edit.setText(out); status.text = "Prelo\u017een\u00e9" } else status.text = "Preklad zlyhal" }
+            main.post { if (out != null) { push(); edit.setText(out); status.text = "Prelozene" } else status.text = "Preklad zlyhal" }
         }.start()
     }
 
@@ -234,33 +236,33 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         try {
             val d = File("/sdcard/Documents/Speak-o"); d.mkdirs()
             val f = File(d, "speako_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".txt")
-            f.writeText(edit.text.toString()); toast("Ulo\u017een\u00e9: ${f.name}")
-        } catch (e: Exception) { toast("Chyba: $e") }
+            f.writeText(edit.text.toString()); toast("Ulozene: ${f.name}")
+        } catch (e: Exception) { toast("Chyba") }
     }
     private fun saveTxt() = doSaveText()
 
     private fun copyText() {
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        cm.setPrimaryClip(ClipData.newPlainText("speako", edit.text.toString())); toast("Skop\u00edrovan\u00e9")
+        cm.setPrimaryClip(ClipData.newPlainText("speako", edit.text.toString())); toast("Skopirovane")
     }
 
     private fun shareText() {
         val i = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, edit.text.toString()) }
-        startActivity(Intent.createChooser(i, "Zdie\u013ea\u0165"))
+        startActivity(Intent.createChooser(i, "Zdielat"))
     }
 
     private fun speak(text: String) {
         if (text.isBlank()) return
         if (Settings.ttsMode == "android" && ttsReady) { tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "s"); return }
         val p = Settings.providers.getOrNull(Settings.ttsProviderIndex)
-        if (p == null) { toast("Pridaj TTS poskytovate\u013ea"); return }
+        if (p == null) { toast("Pridaj TTS poskytovatela"); return }
         Thread {
             val data = ApiClient.tts(p, text, Settings.ttsVoice)
             main.post {
                 if (data != null) try {
                     val tmp = File(cacheDir, "tts.mp3"); tmp.writeBytes(data)
                     player?.release(); player = MediaPlayer().apply { setDataSource(tmp.path); prepare(); start() }
-                } catch (e: Exception) { toast("Prehr\u00e1vanie zlyhalo") } else toast("TTS zlyhalo")
+                } catch (e: Exception) { toast("Prehravanie zlyhalo") } else toast("TTS zlyhalo")
             }
         }.start()
     }
@@ -275,25 +277,25 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     private fun trimAudio() {
         val src = wavFile
-        if (src == null || !src.exists()) { toast("\u017diadna nahr\u00e1vka"); return }
+        if (src == null || !src.exists()) { toast("Ziadna nahravka"); return }
         val input = EditText(this).apply { inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL; hint = "napr. 3.5-12" }
-        AlertDialog.Builder(this).setTitle("Striha\u0165 (sekundy od-do)").setView(input)
-            .setPositiveButton("Strihn\u00fa\u0165") { _, _ ->
+        AlertDialog.Builder(this).setTitle("Strihat (sekundy od-do)").setView(input)
+            .setPositiveButton("Strihnut") { _, _ ->
                 val parts = input.text.toString().split("-")
                 if (parts.size == 2) doTrim(src, parts[0].trim().toDoubleOrNull() ?: 0.0, parts[1].trim().toDoubleOrNull() ?: 0.0)
-            }.setNegativeButton("Zru\u0161i\u0165", null).show()
+            }.setNegativeButton("Zrusit", null).show()
     }
 
     private fun doTrim(src: File, from: Double, to: Double) {
         try {
             val bytes = src.readBytes(); val hdr = 44
             val s = hdr + (from * sampleRate * 2).toInt(); val e = (hdr + (to * sampleRate * 2).toInt()).coerceAtMost(bytes.size)
-            if (s >= e) { toast("Zl\u00fd rozsah"); return }
+            if (s >= e) { toast("Zly rozsah"); return }
             val data = bytes.copyOfRange(s.coerceAtLeast(hdr), e)
             val out = File(diktatDir(), "ostrihane_" + System.currentTimeMillis() + ".wav")
             FileOutputStream(out).use { it.write(ByteArray(hdr)); it.write(data) }
             writeWavHeader(out, data.size / 2)
-            toast("Ostrihan\u00e9: ${out.name}")
+            toast("Ostrihane: ${out.name}")
         } catch (e: Exception) { toast("Strihanie zlyhalo") }
     }
 
@@ -306,7 +308,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
 
     override fun onRequestPermissionsResult(r: Int, p: Array<String>, g: IntArray) {
         super.onRequestPermissionsResult(r, p, g)
-        if (r == REQ_MIC && (g.isEmpty() || g[0] != PackageManager.PERMISSION_GRANTED)) finish()
+        if (r == REQ_MIC2 && (g.isEmpty() || g[0] != PackageManager.PERMISSION_GRANTED)) finish()
     }
 
     override fun onDestroy() { super.onDestroy(); tts?.shutdown(); player?.release() }
