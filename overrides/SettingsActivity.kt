@@ -5,6 +5,7 @@ import android.text.InputType
 import android.widget.*
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import com.k2fsa.sherpa.onnx.R
 
 class SettingsActivity : AppCompatActivity() {
 
@@ -38,7 +39,7 @@ class SettingsActivity : AppCompatActivity() {
             Settings.operitPort = port.text.toString()
             Settings.operitToken = token.text.toString()
             Settings.operitChatId = chat.text.toString()
-            Settings.save(); toast("Ulo\u017een\u00e9")
+            Settings.save(); toast("Ulozene")
         }
         ttsModeSpinner.setSelection(if (Settings.ttsMode == "http") 1 else 0)
     }
@@ -47,13 +48,13 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun renderProviders() {
         list.removeAllViews()
-        if (Settings.providers.isEmpty()) list.addView(TextView(this).apply { text = "\u017diadne API. Pridaj \u2b07"; setPadding(24, 24, 24, 24) })
+        if (Settings.providers.isEmpty()) list.addView(TextView(this).apply { text = "Ziadne API. Pridaj"; setPadding(24, 24, 24, 24) })
         Settings.providers.forEachIndexed { i, p ->
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(16,16,16,16) }
             val tv = TextView(this).apply {
-                text = "${p.name}\n${p.endpoint}\n${p.model}  [${if (p.apiKey.isBlank()) "?" else "\u2713"}]"; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
-            val ed = Button(this).apply { text = "\u270e"; setOnClickListener { editProvider(i) } }
-            val dl = Button(this).apply { text = "\ud83d\uddd1"; setOnClickListener { Settings.providers.removeAt(i); Settings.save(); renderProviders(); renderSpinners() } }
+                text = "${p.name}\n${p.endpoint}\n${p.model}  [${if (p.apiKey.isBlank()) "?" else "OK"}]"; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
+            val ed = Button(this).apply { text = "Uprav"; setOnClickListener { editProvider(i) } }
+            val dl = Button(this).apply { text = "Zmaz"; setOnClickListener { Settings.providers.removeAt(i); Settings.save(); renderProviders(); renderSpinners() } }
             row.addView(tv); row.addView(ed); row.addView(dl); list.addView(row)
         }
     }
@@ -76,17 +77,17 @@ class SettingsActivity : AppCompatActivity() {
     private fun editProvider(idx: Int) {
         val p = if (idx >= 0) Settings.providers[idx] else ApiProvider()
         val v = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(32,16,32,16) }
-        val name = EditText(this).apply { hint = "N\u00e1zov (DeepSeek)"; setText(p.name) }
+        val name = EditText(this).apply { hint = "Nazov (DeepSeek)"; setText(p.name) }
         val ep = EditText(this).apply { hint = "Endpoint (https://api.deepseek.com/v1)"; setText(p.endpoint); inputType = InputType.TYPE_TEXT_VARIATION_URI }
-        val key = EditText(this).apply { hint = "API k\u013e\u00fa\u010d"; setText(p.apiKey); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
+        val key = EditText(this).apply { hint = "API kluc"; setText(p.apiKey); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
         val model = EditText(this).apply { hint = "Model"; setText(p.model) }
         listOf(name, ep, key, model).forEach { v.addView(it) }
-        AlertDialog.Builder(this).setTitle(if (idx >= 0) "Upravi\u0165 API" else "Nov\u00e9 API").setView(v)
-            .setPositiveButton("Ulo\u017ei\u0165") { _, _ ->
+        AlertDialog.Builder(this).setTitle(if (idx >= 0) "Upravit API" else "Nove API").setView(v)
+            .setPositiveButton("Ulozit") { _, _ ->
                 p.name = name.text.toString(); p.endpoint = ep.text.toString(); p.apiKey = key.text.toString(); p.model = model.text.toString()
                 if (idx < 0) Settings.providers.add(p)
                 Settings.save(); renderProviders(); renderSpinners()
-            }.setNegativeButton("Zru\u0161i\u0165", null).show()
+            }.setNegativeButton("Zrusit", null).show()
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
