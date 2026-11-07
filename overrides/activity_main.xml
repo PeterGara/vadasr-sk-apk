@@ -3,7 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#12141A"
+    android:background="#0F1319"
     tools:context=".vad.asr.MainActivity">
 
     <LinearLayout
@@ -33,7 +33,7 @@
                 android:id="@+id/btn_menu"
                 android:layout_width="44dp"
                 android:layout_height="44dp"
-                android:backgroundTint="#232733"
+                android:background="@drawable/btn_neutral"
                 android:minWidth="0dp"
                 android:padding="0dp"
                 android:text="⋮"
@@ -47,7 +47,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:background="#1B1F29"
+            android:background="@drawable/card"
             android:paddingStart="12dp"
             android:paddingTop="6dp"
             android:paddingEnd="12dp"
@@ -56,14 +56,55 @@
             android:textColor="#8A93A6"
             android:textSize="12sp" />
 
-        <!-- EDITOR (karta) -->
+        <!-- PREPINAC REZIMU -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btn_mode1"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:background="@drawable/seg_on"
+                android:text="Prepis"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btn_mode2"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:background="@drawable/seg_off"
+                android:text="Preklad"
+                android:textColor="#C7D0DE"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btn_mode3"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:background="@drawable/seg_off"
+                android:text="Nahrávka"
+                android:textColor="#C7D0DE"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- EDITOR (zdieľaný: prepis + originál prekladu) -->
         <EditText
             android:id="@+id/my_text"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_marginTop="10dp"
             android:layout_weight="1"
-            android:background="#1B1F29"
+            android:background="@drawable/card"
             android:gravity="top|start"
             android:hint="Diktovany text..."
             android:inputType="textMultiLine|textCapSentences"
@@ -73,14 +114,14 @@
             android:textColorHint="#5C6478"
             android:textSize="17sp" />
 
-        <!-- PREKLAD (skryty kym sa nezapne) -->
+        <!-- PREKLAD -->
         <TextView
             android:id="@+id/translate_label"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
             android:text="PREKLAD"
-            android:textColor="#6FA8DC"
+            android:textColor="#7FB3D9"
             android:textSize="11sp"
             android:textStyle="bold"
             android:visibility="gone" />
@@ -91,7 +132,7 @@
             android:layout_height="0dp"
             android:layout_marginTop="4dp"
             android:layout_weight="1"
-            android:background="#16202B"
+            android:background="@drawable/card_alt"
             android:gravity="top|start"
             android:hint="Preklad..."
             android:inputType="textMultiLine"
@@ -102,20 +143,111 @@
             android:textSize="17sp"
             android:visibility="gone" />
 
-        <!-- VELKE NAHRAVANIE -->
+        <LinearLayout
+            android:id="@+id/trans_actions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <Button
+                android:id="@+id/btn_trans_now"
+                android:layout_width="0dp"
+                android:layout_height="52dp"
+                android:layout_weight="1"
+                android:background="@drawable/btn_primary"
+                android:text="Preložiť"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btn_trans_copy"
+                android:layout_width="0dp"
+                android:layout_height="52dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:background="@drawable/btn_neutral"
+                android:text="Kopírovať"
+                android:textColor="#E8ECF5"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btn_trans_send"
+                android:layout_width="0dp"
+                android:layout_height="52dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:background="@drawable/btn_neutral"
+                android:text="Poslať"
+                android:textColor="#E8ECF5"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- NAHRAVKY -->
+        <LinearLayout
+            android:id="@+id/records_page"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="10dp"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/rec_pick"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/btn_primary"
+                    android:text="Vybrať súbor"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/rec_refresh"
+                    android:layout_width="0dp"
+                    android:layout_height="48dp"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/btn_neutral"
+                    android:text="Obnoviť"
+                    android:textColor="#E8ECF5"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <ListView
+                android:id="@+id/lv_records"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="8dp"
+                android:layout_weight="1"
+                android:divider="#0F1319"
+                android:dividerHeight="6dp"
+                android:scrollbars="vertical" />
+        </LinearLayout>
+
+        <!-- VELKE KRUHOVE NAHRAVANIE (len prepis) -->
         <Button
             android:id="@+id/record_button"
-            android:layout_width="match_parent"
-            android:layout_height="70dp"
+            android:layout_width="92dp"
+            android:layout_height="92dp"
+            android:layout_gravity="center_horizontal"
             android:layout_marginTop="10dp"
-            android:backgroundTint="#2E7D5B"
-            android:text="NAHRAVAT"
+            android:background="@drawable/mic_on"
+            android:text="NAHRÁVAŤ"
             android:textColor="#FFFFFF"
-            android:textSize="19sp"
+            android:textSize="13sp"
             android:textStyle="bold" />
 
-        <!-- HLAVNE AKCIE -->
+        <!-- HLAVNE AKCIE (len prepis) -->
         <LinearLayout
+            android:id="@+id/main_actions"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
@@ -124,9 +256,9 @@
             <Button
                 android:id="@+id/act_send"
                 android:layout_width="0dp"
-                android:layout_height="56dp"
+                android:layout_height="52dp"
                 android:layout_weight="1"
-                android:backgroundTint="#2563A6"
+                android:background="@drawable/btn_primary"
                 android:text="Posli"
                 android:textColor="#FFFFFF"
                 android:textSize="14sp" />
@@ -134,10 +266,10 @@
             <Button
                 android:id="@+id/act_dellast"
                 android:layout_width="0dp"
-                android:layout_height="56dp"
+                android:layout_height="52dp"
                 android:layout_marginStart="6dp"
                 android:layout_weight="1"
-                android:backgroundTint="#333B4D"
+                android:background="@drawable/btn_neutral"
                 android:text="Veta"
                 android:textColor="#E8ECF5"
                 android:textSize="14sp" />
@@ -145,38 +277,40 @@
             <Button
                 android:id="@+id/act_clear"
                 android:layout_width="0dp"
-                android:layout_height="56dp"
+                android:layout_height="52dp"
                 android:layout_marginStart="6dp"
                 android:layout_weight="1"
-                android:backgroundTint="#7A3030"
-                android:text="Vsetko"
+                android:background="@drawable/btn_danger"
+                android:text="Všetko"
                 android:textColor="#FFFFFF"
                 android:textSize="14sp" />
         </LinearLayout>
 
-        <!-- 8 KONFIGUROVATELNYCH -->
+        <!-- 8 KONFIGUROVATELNYCH (len prepis) -->
         <LinearLayout
+            android:id="@+id/btn_row1"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:orientation="horizontal">
 
-            <Button android:id="@+id/btn_1" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:backgroundTint="#232733" android:text="B1" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
-            <Button android:id="@+id/btn_2" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:backgroundTint="#232733" android:text="B2" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
-            <Button android:id="@+id/btn_3" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:backgroundTint="#232733" android:text="B3" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
-            <Button android:id="@+id/btn_4" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:backgroundTint="#232733" android:text="B4" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_1" android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1" android:background="@drawable/btn_neutral" android:text="B1" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_2" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginStart="4dp" android:layout_weight="1" android:background="@drawable/btn_neutral" android:text="B2" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_3" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginStart="4dp" android:layout_weight="1" android:background="@drawable/btn_neutral" android:text="B3" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_4" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginStart="4dp" android:layout_weight="1" android:background="@drawable/btn_neutral" android:text="B4" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/btn_row2"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
             android:orientation="horizontal">
 
-            <Button android:id="@+id/btn_5" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:backgroundTint="#232733" android:text="B5" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
-            <Button android:id="@+id/btn_6" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:backgroundTint="#232733" android:text="B6" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
-            <Button android:id="@+id/btn_7" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:backgroundTint="#232733" android:text="B7" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
-            <Button android:id="@+id/btn_8" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:backgroundTint="#232733" android:text="B8" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_5" android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1" android:background="@drawable/btn_neutral" android:text="B5" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_6" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginStart="4dp" android:layout_weight="1" android:background="@drawable/btn_neutral" android:text="B6" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_7" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginStart="4dp" android:layout_weight="1" android:background="@drawable/btn_neutral" android:text="B7" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_8" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginStart="4dp" android:layout_weight="1" android:background="@drawable/btn_neutral" android:text="B8" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
         </LinearLayout>
     </LinearLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>
