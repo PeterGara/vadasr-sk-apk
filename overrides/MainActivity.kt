@@ -50,8 +50,7 @@ import java.util.Locale
 private const val TAG = "sherpa-onnx"
 private const val REQUEST_RECORD_AUDIO_PERMISSION = 200
 
-// v4: v3 (funkcny HTTP send do Operitu) + vzdy viditelne tlacidla (Posli, Zmaz vsetko, Zmaz poslednu)
-// + menu (⋮). Vsetko konfigurovatelne za behu z buttons.txt / config.txt -> opravy bez buildu.
+// v5: "Posli" posle LEN NOVE casti (od posledneho poslania) a to OKAMZITE (sync + vlastny callback).
 class MainActivity : AppCompatActivity() {
 
     private lateinit var recordButton: Button
@@ -69,6 +68,8 @@ class MainActivity : AppCompatActivity() {
 
     private var sessionFile: File? = null
     private val segments = ArrayList<String>()
+    // kolko segmentov uz bolo odoslanych ("Posli" posle len nove)
+    private var sentCount = 0
 
     private val undoStack = ArrayDeque<String>()
     private val redoStack = ArrayDeque<String>()
@@ -107,7 +108,6 @@ class MainActivity : AppCompatActivity() {
     private fun writeDefaultButtons() {
         buttonsFile().writeText(
             "# === TLACIDLA: poradie 1-8 | popis | akcia ===\n" +
-            "# akcie: undo/redo/paragraph/save/save_public/clear/notify/send_chat/copy/share/time/del_last/noop\n" +
             "1|\u00b6 Odst.|paragraph\n" +
             "2|Uloz|save\n" +
             "3|Kopir.|copy\n" +
@@ -172,6 +172,7 @@ class MainActivity : AppCompatActivity() {
             "novy odstavec|paragraph\n" +
             "posli|send_chat\n" +
             "posli do operitu|send_chat\n" +
+            "novy|send_chat\n" +
             "vymaz vsetko|clear\n" +
             "zmaz poslednu|del_last\n" +
             "uloz to|save\n" +
@@ -285,7 +286,8 @@ class MainActivity : AppCompatActivity() {
         val chars = segments.joinToString("\n").length
         val words = segments.joinToString(" ").split(Regex("\\s+")).filter { it.isNotBlank() }.size
         val rec = if (isRecording) "NAHRAVA" else "stop"
-        statusView.text = "$rec | ${segments.size} odst. | $words slov | $chars znakov"
+        val newCount = (segments.size - sentCount).coerceAtLeast(0)
+        statusView.text = "$rec | ${segments.size} casti | novych: $newCount | $words slov | $chars znakov"
     }
 
     private fun notifyIfNeeded(force: Boolean) {
@@ -324,11 +326,12 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread { textView.append("\n[znova]") }
     }
 
-    /** Zmaze poslednu vlozenu cast (segment). */
     private fun doDelLast() {
         if (segments.isEmpty()) { runOnUiThread { Toast.makeText(this, "Prazdne", Toast.LENGTH_SHORT).show() } ; return }
         pushHistory()
         segments.removeAt(segments.lastIndex)
+        // ked zmazeme odoslane, znizime pocitadlo
+        if (sentCount > segments.size) sentCount = segments.size
         persist(); runOnUiThread { render(); updateStatus(); textView.append("\n[zmazana posledna]") }
     }
 
@@ -345,7 +348,7 @@ class MainActivity : AppCompatActivity() {
             action == "save" -> runOnUiThread { doSave(notify = true) }
             action == "save_public" -> runOnUiThread { doSavePublic() }
             action == "clear" -> {
-                pushHistory(); segments.clear(); persist()
+                pushHistory(); segments.clear(); sentCount = 0; persist()
                 runOnUiThread { render(); updateStatus(); textView.append("\n[vymazane]") }
             }
             action == "notify" -> notifyIfNeeded(force = true)
@@ -390,8 +393,15 @@ class MainActivity : AppCompatActivity() {
         notifyIfNeeded(force = false)
     }
 
+    /** Posle LEN NOVE segmenty (od posledneho odoslania) a hned sa vráti. */
     private fun sendToOperit() {
-        val text = segments.joinToString("\n")
+        if (segments.size <= sentCount) {
+            runOnUiThread { Toast.makeText(this, "Nic nove", Toast.LENGTH_SHORT).show() }
+            return
+        }
+        val newText = segments.subList(sentCount, segments.size).joinToString("\n")
+        val newFrom = sentCount
+
         try {
             val dir = diktatDir()
             var p = sessionFile?.absolutePath
@@ -402,11 +412,13 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { }
 
         thread(true) {
-            val ok = httpSend(text)
+            val ok = httpSend(newText)
+            if (ok) sentCount = segments.size
             runOnUiThread {
                 textView.post {
-                    textView.append(if (ok) "\n[odoslane do Operitu OK]" else "\n[CHYBA odoslania: token/port?]")
+                    textView.append(if (ok) "\n[odoslane OK]" else "\n[CHYBA: token/port?]")
                 }
+                updateStatus()
                 Toast.makeText(this, if (ok) "Poslane do Operitu" else "Odoslanie zlyhalo", Toast.LENGTH_SHORT).show()
             }
         }
@@ -418,8 +430,10 @@ class MainActivity : AppCompatActivity() {
                 Log.e(TAG, "operit_token nie je nastaveny v config.txt")
                 return false
             }
+            // async_callback = posle sa hned, caka sa len na accepted (neblokuje na odpovedi AI)
             val json = "{\"message\":\"" + esc(message) + "\"," +
-                    "\"response_mode\":\"sync\"," +
+                    "\"response_mode\":\"async_callback\"," +
+                    "\"callback_url\":\"http://127.0.0.1:1/cb\"," +
                     "\"show_floating\":false," +
                     "\"return_tool_status\":false," +
                     "\"chat_id\":\"" + esc(cfgOperitChatId) + "\"}"
@@ -428,7 +442,7 @@ class MainActivity : AppCompatActivity() {
             c.requestMethod = "POST"
             c.doOutput = true
             c.connectTimeout = 8000
-            c.readTimeout = 120000
+            c.readTimeout = 20000
             c.setRequestProperty("Content-Type", "application/json; charset=utf-8")
             c.setRequestProperty("Authorization", "Bearer " + cfgOperitToken)
             OutputStreamWriter(c.outputStream, Charsets.UTF_8).use { it.write(json) }
@@ -502,20 +516,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Menu (⋮) — dalsie akcie. */
     private fun showMenu() {
-        val items = arrayOf("Poslat do Operitu", "Zmazat cely text", "Zmazat poslednu vlozenu",
+        val items = arrayOf("Poslat NOVE do Operitu", "Poslat VSETKO do Operitu", "Zmazat cely text", "Zmazat poslednu vlozenu",
             "Spat (undo)", "Znova (redo)", "Ulozit TXT", "Kopirovat", "Zdielat", "Notifikacia")
         AlertDialog.Builder(this).setTitle("Menu").setItems(items) { _, i -> when (i) {
             0 -> sendToOperit()
-            1 -> runAction("clear")
-            2 -> doDelLast()
-            3 -> doUndo()
-            4 -> doRedo()
-            5 -> doSavePublic()
-            6 -> doCopy()
-            7 -> doShare()
-            8 -> notifyIfNeeded(force = true)
+            1 -> { sentCount = 0; sendToOperit() }
+            2 -> runAction("clear")
+            3 -> doDelLast()
+            4 -> doUndo()
+            5 -> doRedo()
+            6 -> doSavePublic()
+            7 -> doCopy()
+            8 -> doShare()
+            9 -> notifyIfNeeded(force = true)
         } }.show()
     }
 
@@ -575,7 +589,7 @@ class MainActivity : AppCompatActivity() {
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(svc) else startService(svc)
             recordButton.setText(R.string.stop)
             isRecording = true
-            segments.clear(); undoStack.clear(); redoStack.clear()
+            segments.clear(); undoStack.clear(); redoStack.clear(); sentCount = 0
             sessionFile = File(diktatDir(), "diktat_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".txt")
             persist(); render(); lastNotifyAt = 0
             if (cfgKeepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
