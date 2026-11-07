@@ -33,7 +33,7 @@
                 android:id="@+id/btn_menu"
                 android:layout_width="44dp"
                 android:layout_height="44dp"
-                android:background="@drawable/btn_neutral"
+                android:backgroundTint="@null" android:background="@drawable/btn_neutral"
                 android:minWidth="0dp"
                 android:padding="0dp"
                 android:text="⋮"
@@ -47,7 +47,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:background="@drawable/card"
+            android:backgroundTint="@null" android:background="@drawable/card"
             android:paddingStart="12dp"
             android:paddingTop="6dp"
             android:paddingEnd="12dp"
@@ -68,7 +68,7 @@
                 android:layout_width="0dp"
                 android:layout_height="44dp"
                 android:layout_weight="1"
-                android:background="@drawable/seg_on"
+                android:backgroundTint="@null" android:background="@drawable/seg_on"
                 android:text="Prepis"
                 android:textColor="#FFFFFF"
                 android:textSize="14sp"
@@ -80,7 +80,7 @@
                 android:layout_height="44dp"
                 android:layout_marginStart="6dp"
                 android:layout_weight="1"
-                android:background="@drawable/seg_off"
+                android:backgroundTint="@null" android:background="@drawable/seg_off"
                 android:text="Preklad"
                 android:textColor="#C7D0DE"
                 android:textSize="14sp" />
@@ -91,7 +91,7 @@
                 android:layout_height="44dp"
                 android:layout_marginStart="6dp"
                 android:layout_weight="1"
-                android:background="@drawable/seg_off"
+                android:backgroundTint="@null" android:background="@drawable/seg_off"
                 android:text="Nahrávka"
                 android:textColor="#C7D0DE"
                 android:textSize="14sp" />
@@ -104,7 +104,7 @@
             android:layout_height="0dp"
             android:layout_marginTop="10dp"
             android:layout_weight="1"
-            android:background="@drawable/card"
+            android:backgroundTint="@null" android:background="@drawable/card"
             android:gravity="top|start"
             android:hint="Diktovany text..."
             android:inputType="textMultiLine|textCapSentences"
@@ -132,7 +132,7 @@
             android:layout_height="0dp"
             android:layout_marginTop="4dp"
             android:layout_weight="1"
-            android:background="@drawable/card_alt"
+            android:backgroundTint="@null" android:background="@drawable/card_alt"
             android:gravity="top|start"
             android:hint="Preklad..."
             android:inputType="textMultiLine"
@@ -156,7 +156,7 @@
                 android:layout_width="0dp"
                 android:layout_height="52dp"
                 android:layout_weight="1"
-                android:background="@drawable/btn_primary"
+                android:backgroundTint="@null" android:background="@drawable/btn_primary"
                 android:text="Preložiť"
                 android:textColor="#FFFFFF"
                 android:textSize="14sp" />
@@ -167,7 +167,7 @@
                 android:layout_height="52dp"
                 android:layout_marginStart="6dp"
                 android:layout_weight="1"
-                android:background="@drawable/btn_neutral"
+                android:backgroundTint="@null" android:background="@drawable/btn_neutral"
                 android:text="Kopírovať"
                 android:textColor="#E8ECF5"
                 android:textSize="14sp" />
@@ -178,7 +178,7 @@
                 android:layout_height="52dp"
                 android:layout_marginStart="6dp"
                 android:layout_weight="1"
-                android:background="@drawable/btn_neutral"
+                android:backgroundTint="@null" android:background="@drawable/btn_neutral"
                 android:text="Poslať"
                 android:textColor="#E8ECF5"
                 android:textSize="14sp" />
@@ -204,7 +204,7 @@
                     android:layout_width="0dp"
                     android:layout_height="48dp"
                     android:layout_weight="1"
-                    android:background="@drawable/btn_primary"
+                    android:backgroundTint="@null" android:background="@drawable/btn_primary"
                     android:text="Vybrať súbor"
                     android:textColor="#FFFFFF"
                     android:textSize="13sp" />
@@ -215,7 +215,7 @@
                     android:layout_height="48dp"
                     android:layout_marginStart="6dp"
                     android:layout_weight="1"
-                    android:background="@drawable/btn_neutral"
+                    android:backgroundTint="@null" android:background="@drawable/btn_neutral"
                     android:text="Obnoviť"
                     android:textColor="#E8ECF5"
                     android:textSize="13sp" />
@@ -239,7 +239,7 @@
             android:layout_height="92dp"
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="10dp"
-            android:background="@drawable/mic_on"
+            android:backgroundTint="@null" android:background="@drawable/mic_on"
             android:text="NAHRÁVAŤ"
             android:textColor="#FFFFFF"
             android:textSize="13sp"
@@ -258,7 +258,7 @@
                 android:layout_width="0dp"
                 android:layout_height="52dp"
                 android:layout_weight="1"
-                android:background="@drawable/btn_primary"
+                android:backgroundTint="@null" android:background="@drawable/btn_primary"
                 android:text="Posli"
                 android:textColor="#FFFFFF"
                 android:textSize="14sp" />
@@ -269,7 +269,7 @@
                 android:layout_height="52dp"
                 android:layout_marginStart="6dp"
                 android:layout_weight="1"
-                android:background="@drawable/btn_neutral"
+                android:backgroundTint="@null" android:background="@drawable/btn_neutral"
                 android:text="Veta"
                 android:textColor="#E8ECF5"
                 android:textSize="14sp" />
@@ -280,9 +280,20 @@
                 android:layout_height="52dp"
                 android:layout_marginStart="6dp"
                 android:layout_weight="1"
-                android:background="@drawable/btn_danger"
+                android:backgroundTint="@null" android:background="@drawable/btn_danger"
                 android:text="Všetko"
                 android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/act_copy"
+                android:layout_width="0dp"
+                android:layout_height="52dp"
+                android:layout_marginStart="6dp"
+                android:layout_weight="1"
+                android:backgroundTint="@null" android:background="@drawable/btn_neutral"
+                android:text="Kopír."
+                android:textColor="#E8ECF5"
                 android:textSize="14sp" />
         </LinearLayout>
 
@@ -294,10 +305,10 @@
             android:layout_marginTop="6dp"
             android:orientation="horizontal">
 
-            <Button android:id="@+id/btn_1" android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1" android:background="@drawable/btn_neutral" android:text="B1" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
-            <Button android:id="@+id/btn_2" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginStart="4dp" android:layout_weight="1" android:background="@drawable/btn_neutral" android:text="B2" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
-            <Button android:id="@+id/btn_3" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginStart="4dp" android:layout_weight="1" android:background="@drawable/btn_neutral" android:text="B3" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
-            <Button android:id="@+id/btn_4" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginStart="4dp" android:layout_weight="1" android:background="@drawable/btn_neutral" android:text="B4" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_1" android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1" android:backgroundTint="@null" android:background="@drawable/btn_neutral" android:text="B1" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_2" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginStart="4dp" android:layout_weight="1" android:backgroundTint="@null" android:background="@drawable/btn_neutral" android:text="B2" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_3" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginStart="4dp" android:layout_weight="1" android:backgroundTint="@null" android:background="@drawable/btn_neutral" android:text="B3" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_4" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginStart="4dp" android:layout_weight="1" android:backgroundTint="@null" android:background="@drawable/btn_neutral" android:text="B4" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
         </LinearLayout>
 
         <LinearLayout
@@ -307,10 +318,10 @@
             android:layout_marginTop="4dp"
             android:orientation="horizontal">
 
-            <Button android:id="@+id/btn_5" android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1" android:background="@drawable/btn_neutral" android:text="B5" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
-            <Button android:id="@+id/btn_6" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginStart="4dp" android:layout_weight="1" android:background="@drawable/btn_neutral" android:text="B6" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
-            <Button android:id="@+id/btn_7" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginStart="4dp" android:layout_weight="1" android:background="@drawable/btn_neutral" android:text="B7" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
-            <Button android:id="@+id/btn_8" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginStart="4dp" android:layout_weight="1" android:background="@drawable/btn_neutral" android:text="B8" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_5" android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1" android:backgroundTint="@null" android:background="@drawable/btn_neutral" android:text="B5" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_6" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginStart="4dp" android:layout_weight="1" android:backgroundTint="@null" android:background="@drawable/btn_neutral" android:text="B6" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_7" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginStart="4dp" android:layout_weight="1" android:backgroundTint="@null" android:background="@drawable/btn_neutral" android:text="B7" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_8" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginStart="4dp" android:layout_weight="1" android:backgroundTint="@null" android:background="@drawable/btn_neutral" android:text="B8" android:textColor="#B9C2D4" android:textSize="11sp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
         </LinearLayout>
     </LinearLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>
