@@ -36,7 +36,7 @@
             android:inputType="numberDecimal" android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
     </LinearLayout>
 
-    <Button android:id="@+id/btn_play" android:layout_width="match_parent" android:layout_height="48dp"
+    <android.widget.Button android:id="@+id/btn_play" android:layout_width="match_parent" android:layout_height="48dp"
         android:layout_marginTop="10dp" android:background="@drawable/btn_neutral" android:text="Prehrat"
         android:textColor="#E8ECF5" />
 </LinearLayout>
