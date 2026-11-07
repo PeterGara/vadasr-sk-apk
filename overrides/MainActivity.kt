@@ -4,6 +4,9 @@ import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
@@ -13,8 +16,10 @@ import android.os.Build
 import android.os.Bundle
 import android.text.method.ScrollingMovementMethod
 import android.util.Log
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
@@ -34,18 +39,24 @@ import androidx.lifecycle.lifecycleScope
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
+import java.util.ArrayDeque
 import java.util.Date
 import java.util.Locale
 
 private const val TAG = "sherpa-onnx"
 private const val REQUEST_RECORD_AUDIO_PERMISSION = 200
 
-// Otvorena appka: PRAVIDLA (commands.txt) + KONFIG (config.txt) sa citaju za behu.
-// Akekolvek nove slovo / akcia = uprava suboru + (hot reload) ziadny build.
+// Otvorena appka: PRAVIDLA (commands.txt) + KONFIG (config.txt) + TLACIDLA (buttons.txt)
+// sa citaju za behu. Akekolvek nove slovo / akcia = uprava suboru (hot reload) = ziadny build.
+//
+// DOLEZITE (v2): akcia "send_chat" teraz OKREM zapisu SENDME.txt posle aj broadcast
+// com.ai.assistance.operit.TRIGGER_WORKFLOW priamo Operitovi. To je manifest prijimac,
+// takze Operit sa ZOBUDI aj ked spal/zamrzol -> diktat dorazi vzdy, nie len ked je online.
 class MainActivity : AppCompatActivity() {
 
     private lateinit var recordButton: Button
     private lateinit var textView: TextView
+    private lateinit var statusView: TextView
     private lateinit var vad: Vad
     private var audioRecord: AudioRecord? = null
     private var recordingThread: Thread? = null
@@ -60,14 +71,19 @@ class MainActivity : AppCompatActivity() {
     private var sessionFile: File? = null
     private val segments = ArrayList<String>()
 
+    // undo/redo historia
+    private val undoStack = ArrayDeque<String>()
+    private val redoStack = ArrayDeque<String>()
+
     // ---------- KONFIG (config.txt) ----------
     private var cfgThreshold = 0.5f
     private var cfgMinSilence = 0.4f
     private var cfgCmdMaxWords = 4
-    private var cfgNotifyMode = "on_save"     // off | on_change | on_save
+    private var cfgNotifyMode = "on_save"
     private var cfgNotifyIntervalS = 30
-    private var cfgBtn2Label = "Späť"
-    private var cfgBtn3Label = "Uložiť"
+    private var cfgKeepScreenOn = true
+    private var cfgOperitPackage = "com.ai.assistance.operit"
+    private var cfgWorkflowId = "38245eb0-2995-4034-9ec5-e5bd186f32ea"
 
     // ---------- PRAVIDLA (commands.txt): fraza | akcia ----------
     private data class Rule(val phrase: String, val action: String)
@@ -80,13 +96,14 @@ class MainActivity : AppCompatActivity() {
     @Volatile
     private var isRecording = false
 
-    // tlačidlo: id, label, akcia (rovnaký formát akcií ako commands.txt)
+    // tlacidlo: id, label, akcia
     private data class BtnCfg(val label: String, val action: String)
     private val buttonActions = HashMap<Int, BtnCfg>()
     private var btnMtime = 0L
     private val buttonIds = listOf(
         R.id.btn_1, R.id.btn_2, R.id.btn_3, R.id.btn_4,
-        R.id.btn_5, R.id.btn_6, R.id.btn_7, R.id.btn_8
+        R.id.btn_5, R.id.btn_6, R.id.btn_7, R.id.btn_8,
+        R.id.btn_9, R.id.btn_10, R.id.btn_11, R.id.btn_12
     )
     private val buttonViews = ArrayList<Button>()
 
@@ -94,16 +111,21 @@ class MainActivity : AppCompatActivity() {
 
     private fun writeDefaultButtons() {
         buttonsFile().writeText(
-            "# === TLACIDLA: poradie 1-8 | popis | akcia ===\n" +
-            "# akcie: undo/paragraph/stop/save/stop_save/clear/notify/append:TEXT/shell:CMD/noop\n" +
-            "1|Späť|undo\n" +
-            "2|Uložiť|save\n" +
-            "3|Operitu|send_chat\n" +
-            "4|Odstavec|paragraph\n" +
-            "5|Vymaž|clear\n" +
-            "6|Notifikuj|notify\n" +
-            "7|B7|noop\n" +
-            "8|B8|noop\n",
+            "# === TLACIDLA: poradie 1-12 | popis | akcia ===\n" +
+            "# akcie: undo/redo/paragraph/stop/save/save_public/clear/notify/send_chat/\n" +
+            "#         copy/share/time/append:TEXT/shell:CMD/noop\n" +
+            "1|\u2190 Spat|undo\n" +
+            "2|\u2192 Znova|redo\n" +
+            "3|\u2709 Operit|send_chat\n" +
+            "4|\u00b6 Odst.|paragraph\n" +
+            "5|Uloz|save\n" +
+            "6|Kopir.|copy\n" +
+            "7|Zdiel.|share\n" +
+            "8|Cas|time\n" +
+            "9|Uloz PDF|save_public\n" +
+            "10|Vymaz|clear\n" +
+            "11|Notif.|notify\n" +
+            "12|Stop|stop\n",
             Charsets.UTF_8
         )
     }
@@ -120,9 +142,8 @@ class MainActivity : AppCompatActivity() {
                 val p = s.split('|', limit = 3)
                 if (p.size != 3) return@forEach
                 val n = p[0].trim().toIntOrNull() ?: return@forEach
-                if (n in 1..8) buttonActions[n] = BtnCfg(p[1].trim(), p[2].trim())
+                if (n in 1..12) buttonActions[n] = BtnCfg(p[1].trim(), p[2].trim())
             }
-            // aplikovat na views (ak existuju)
             runOnUiThread {
                 buttonViews.forEachIndexed { i, v ->
                     val cfg = buttonActions[i + 1]
@@ -134,7 +155,7 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { Log.e(TAG, "buttons err: $e") }
     }
 
-    // ---------------- súbory konfigu ----------------
+    // ---------------- subory konfigu ----------------
     private fun filesDirCfg(): File = getExternalFilesDir(null) ?: filesDir
     private fun configFile(): File = File(filesDirCfg(), "config.txt")
     private fun commandsFile(): File = File(filesDirCfg(), "commands.txt")
@@ -142,53 +163,42 @@ class MainActivity : AppCompatActivity() {
     private fun writeDefaultConfig() {
         configFile().writeText(
             "# === KONFIG (hladany pri starte a pri zmene suboru - BEZ buildu) ===\n" +
-            "# prah VAD 0.4-0.9 (vyssie = menej sumu zachyti)\n" +
             "threshold=0.5\n" +
-            "# pauza medzi segmentami v sekundach\n" +
             "min_silence=0.4\n" +
-            "# maximalny pocet slov v prikaze\n" +
             "cmd_max_words=4\n" +
-            "# notifikacia: off | on_change | on_save\n" +
-            "#   on_change = po kazdej zmene textu (s intervalom notify_interval_s)\n" +
-            "#   on_save   = len pri ULOZIT / pošli (odporucane)\n" +
             "notify_mode=on_save\n" +
             "notify_interval_s=30\n" +
-            "# popisky tlacidiel\n" +
-            "btn2_label=Späť\n" +
-            "btn3_label=Uložiť\n",
+            "keep_screen_on=true\n" +
+            "operit_package=com.ai.assistance.operit\n" +
+            "workflow_id=38245eb0-2995-4034-9ec5-e5bd186f32ea\n",
             Charsets.UTF_8
         )
     }
 
     private fun writeDefaultCommands() {
         commandsFile().writeText(
-            "# === PRAVIDLA: fraza | akcia (prefix, bez diakritiky, ~4 slova) ===\n" +
-            "# AKCIE:\n" +
-            "#   undo          = zmaze posledny riadok\n" +
-            "#   paragraph     = novy odstavec\n" +
-            "#   stop_save     = ukonci nahravanie + uloz + notifikacia\n" +
-            "#   stop          = iba ukonci nahravanie\n" +
-            "#   save          = iba uloz + notifikacia\n" +
-            "#   clear         = vymaze celu relaciu\n" +
-            "#   notify        = hodi notifikaciu s aktualnym textom\n" +
-            "#   append:TEXT   = vlozi TEXT do dokumentu\n" +
-            "#   shell:CMD     = spusti shell prikaz (AKOKOLVEK - tvorenie bez buildu!)\n" +
-            "#   noop          = nic (len na vyskusanie zachytenia slova)\n" +
-            "preč vetu|undo\n" +
-            "nový odstavec|paragraph\n" +
-            "pošli|send_chat\n" +
-            "vymaž všetko|clear\n" +
-            "ulož to|save\n" +
-            "daj vedieť|notify\n",
+            "# === PRAVIDLA: fraza | akcia ===\n" +
+            "prec vetu|undo\n" +
+            "vrat to|redo\n" +
+            "novy odstavec|paragraph\n" +
+            "posli|send_chat\n" +
+            "posli do operitu|send_chat\n" +
+            "vymaz vsetko|clear\n" +
+            "uloz to|save\n" +
+            "uloz do suboru|save_public\n" +
+            "skopiruj|copy\n" +
+            "zdielaj|share\n" +
+            "daj vediet|notify\n" +
+            "cas|time\n",
             Charsets.UTF_8
         )
     }
 
     private fun normalize(s: String): String {
         val m = mapOf(
-            'č' to 'c', 'š' to 's', 'ž' to 'z', 'ý' to 'y', 'á' to 'a', 'í' to 'i',
-            'é' to 'e', 'ó' to 'o', 'ú' to 'u', 'ô' to 'o', 'ä' to 'a', 'ľ' to 'l',
-            'ň' to 'n', 'ť' to 't', 'ď' to 'd', 'ŕ' to 'r'
+            '\u010d' to 'c', '\u0161' to 's', '\u017e' to 'z', '\u00fd' to 'y', '\u00e1' to 'a', '\u00ed' to 'i',
+            '\u00e9' to 'e', '\u00f3' to 'o', '\u00fa' to 'u', '\u00f4' to 'o', '\u00e4' to 'a', '\u013e' to 'l',
+            '\u0148' to 'n', '\u0165' to 't', '\u010f' to 'd', '\u0155' to 'r'
         )
         return s.lowercase().map { m[it] ?: it }.joinToString("")
     }
@@ -209,8 +219,9 @@ class MainActivity : AppCompatActivity() {
                     "cmd_max_words" -> cfgCmdMaxWords = v.toIntOrNull() ?: cfgCmdMaxWords
                     "notify_mode" -> cfgNotifyMode = v
                     "notify_interval_s" -> cfgNotifyIntervalS = v.toIntOrNull() ?: cfgNotifyIntervalS
-                    "btn2_label" -> cfgBtn2Label = v
-                    "btn3_label" -> cfgBtn3Label = v
+                    "keep_screen_on" -> cfgKeepScreenOn = v.equals("true", true)
+                    "operit_package" -> cfgOperitPackage = v
+                    "workflow_id" -> cfgWorkflowId = v
                 }
             }
             Log.i(TAG, "config: th=$cfgThreshold sil=$cfgMinSilence notify=$cfgNotifyMode")
@@ -228,12 +239,11 @@ class MainActivity : AppCompatActivity() {
                 val p = s.split('|', limit = 2)
                 if (p.size != 2) return@mapNotNull null
                 Rule(p[0].trim(), p[1].trim())
-            }.sortedByDescending { it.phrase.length } // najdlšie frazy prve
+            }.sortedByDescending { it.phrase.length }
             Log.i(TAG, "rules: ${rules.size}")
         } catch (e: Exception) { Log.e(TAG, "commands err: $e") }
     }
 
-    // hot reload: kontroluje mtimes (lacne stat volania)
     private fun maybeReloadConfig() {
         try {
             val c = configFile(); val d = commandsFile(); val b = buttonsFile()
@@ -241,20 +251,18 @@ class MainActivity : AppCompatActivity() {
             val dm = if (d.exists()) d.lastModified() else 0L
             val bm = if (b.exists()) b.lastModified() else 0L
             if (cm != cfgMtime || dm != cmdMtime || bm != btnMtime) {
-                Log.i(TAG, "config changed -> reload")
                 loadConfig(); loadCommands(); loadButtons()
-                runOnUiThread { textView.append("\n[konfig načítaný]") }
+                runOnUiThread { textView.append("\n[konfig nacitany]") }
             }
         } catch (e: Exception) { }
     }
 
-    // ---------------- notifikacia priamo z appky (ziadny watchdog!) ----------------
     private fun notifyText(title: String, text: String) {
         try {
             val nm = getSystemService(NotificationManager::class.java)
             if (Build.VERSION.SDK_INT >= 26) {
                 nm.createNotificationChannel(
-                    NotificationChannel("diktat_text", "Diktát text", NotificationManager.IMPORTANCE_HIGH)
+                    NotificationChannel("diktat_text", "Diktat text", NotificationManager.IMPORTANCE_HIGH)
                 )
             }
             @Suppress("DEPRECATION")
@@ -269,7 +277,6 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { Log.e(TAG, "notify err: $e") }
     }
 
-    // ---------------- sesia a zapis ----------------
     private fun diktatDir(): File {
         val d = File(filesDirCfg(), "Diktat"); if (!d.exists()) d.mkdirs(); return d
     }
@@ -285,6 +292,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun render() { textView.text = segments.joinToString("\n") }
 
+    private fun updateStatus() {
+        val chars = segments.joinToString("\n").length
+        val words = segments.joinToString(" ").split(Regex("\\s+")).filter { it.isNotBlank() }.size
+        val rec = if (isRecording) "NAHRAVA" else "stop"
+        statusView.text = "$rec | ${segments.size} odst. | $words slov | $chars znakov"
+    }
+
     private fun notifyIfNeeded(force: Boolean) {
         if (cfgNotifyMode == "off") return
         if (!force && cfgNotifyMode != "on_change") return
@@ -292,54 +306,64 @@ class MainActivity : AppCompatActivity() {
         if (!force && now - lastNotifyAt < cfgNotifyIntervalS * 1000L) return
         lastNotifyAt = now
         val txt = segments.joinToString("\n")
-        if (txt.isNotBlank()) notifyText("Diktát", txt)
+        if (txt.isNotBlank()) notifyText("Diktat", txt)
     }
 
-    // ---------------- akcie ----------------
+    private fun pushHistory() {
+        undoStack.addLast(segments.joinToString("\n"))
+        if (undoStack.size > 200) undoStack.removeFirst()
+        redoStack.clear()
+    }
+
+    private fun restore(state: String) {
+        segments.clear()
+        if (state.isNotEmpty()) state.split("\n").forEach { segments.add(it) }
+        persist(); runOnUiThread { render(); updateStatus() }
+    }
+
+    private fun doUndo() {
+        if (undoStack.isEmpty()) return
+        redoStack.addLast(segments.joinToString("\n"))
+        restore(undoStack.removeLast())
+        runOnUiThread { textView.append("\n[spat]") }
+    }
+
+    private fun doRedo() {
+        if (redoStack.isEmpty()) return
+        undoStack.addLast(segments.joinToString("\n"))
+        restore(redoStack.removeLast())
+        runOnUiThread { textView.append("\n[znova]") }
+    }
+
     private fun runAction(action: String) {
         when {
-            action == "undo" -> {
-                if (segments.isNotEmpty()) {
-                    segments.removeAt(segments.lastIndex); persist()
-                    runOnUiThread { render(); textView.append("\n[zmazané]") }
-                }
-            }
+            action == "undo" -> doUndo()
+            action == "redo" -> doRedo()
             action == "paragraph" -> {
-                if (segments.isNotEmpty()) {
-                    segments[segments.lastIndex] = segments.last() + "\n"; persist()
-                    runOnUiThread { render() }
-                }
+                pushHistory()
+                segments.add(""); persist()
+                runOnUiThread { render(); updateStatus() }
             }
             action == "stop" -> runOnUiThread { if (isRecording) toggleRecord() }
-            action == "stop_save" -> runOnUiThread {
-                if (isRecording) toggleRecord()
-                notifyIfNeeded(force = true)
-                sendSavedBroadcast()
-            }
             action == "save" -> runOnUiThread { doSave(notify = true) }
+            action == "save_public" -> runOnUiThread { doSavePublic() }
             action == "clear" -> {
-                segments.clear(); persist()
-                runOnUiThread { render(); textView.append("\n[vymazané]") }
+                pushHistory(); segments.clear(); persist()
+                runOnUiThread { render(); updateStatus(); textView.append("\n[vymazane]") }
             }
             action == "notify" -> notifyIfNeeded(force = true)
-            action == "send_chat" -> {
-                // zastavi nahravanie + zapise flag (workflow ho cita) + broadcast (bonus)
-                runOnUiThread { if (isRecording) toggleRecord() }
-                try {
-                    val dir = diktatDir()
-                    var p = sessionFile?.absolutePath
-                    if (p == null || !File(p).exists()) {
-                        p = dir.listFiles()?.maxByOrNull { it.lastModified() }?.absolutePath
-                    }
-                    if (p != null) File(dir, "SENDME.txt").writeText(p)
-                } catch (e: Exception) { Log.e(TAG, "flag err: $e") }
-                sendSavedBroadcast()
-                textView.post { textView.append("\n[odosielam do Operitu...]") }
+            action == "copy" -> doCopy()
+            action == "share" -> doShare()
+            action == "time" -> {
+                pushHistory()
+                segments.add("[" + SimpleDateFormat("HH:mm", Locale.US).format(Date()) + "]")
+                persist(); runOnUiThread { render(); updateStatus() }
             }
+            action == "send_chat" -> sendToOperit()
             action == "noop" -> { }
             action.startsWith("append:") -> {
-                segments.add(action.removePrefix("append:")); persist()
-                runOnUiThread { render() }
+                pushHistory(); segments.add(action.removePrefix("append:")); persist()
+                runOnUiThread { render(); updateStatus() }
             }
             action.startsWith("shell:") -> {
                 try {
@@ -364,9 +388,43 @@ class MainActivity : AppCompatActivity() {
 
     private fun applySegment(text: String) {
         if (matchAndRun(text)) return
+        pushHistory()
         segments.add(text); persist()
-        runOnUiThread { render() }
-        notifyIfNeeded(force = false) // len ak notify_mode=on_change
+        runOnUiThread { render(); updateStatus() }
+        notifyIfNeeded(force = false)
+    }
+
+    // ---------------- KLUCOVA FUNKCIA: posli do Operitu + ZOBUD ho ----------------
+    private fun sendToOperit() {
+        runOnUiThread { if (isRecording) toggleRecord() }
+        try {
+            val dir = diktatDir()
+            var p = sessionFile?.absolutePath
+            if (p == null || !File(p).exists()) {
+                p = dir.listFiles()?.maxByOrNull { it.lastModified() }?.absolutePath
+            }
+            if (p != null) File(dir, "SENDME.txt").writeText(p)
+        } catch (e: Exception) { Log.e(TAG, "flag err: $e") }
+
+        sendSavedBroadcast()
+        triggerOperitWorkflow()
+
+        runOnUiThread {
+            textView.post { textView.append("\n[odosielam do Operitu...]") }
+            Toast.makeText(this, "Poslane do Operitu", Toast.LENGTH_SHORT).show()
+        }
+        Log.i(TAG, "send_chat -> operit")
+    }
+
+    private fun triggerOperitWorkflow() {
+        try {
+            val i = Intent("com.ai.assistance.operit.TRIGGER_WORKFLOW")
+            i.setPackage(cfgOperitPackage)
+            i.putExtra("workflowId", cfgWorkflowId)
+            i.putExtra("workflow_id", cfgWorkflowId)
+            i.putExtra("id", cfgWorkflowId)
+            sendBroadcast(i)
+        } catch (e: Exception) { Log.e(TAG, "trigger operit err: $e") }
     }
 
     private fun sendSavedBroadcast() {
@@ -376,17 +434,53 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { }
     }
 
+    private fun doCopy() {
+        try {
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("diktat", segments.joinToString("\n")))
+            runOnUiThread { Toast.makeText(this, "Skopirovane", Toast.LENGTH_SHORT).show() }
+        } catch (e: Exception) { Log.e(TAG, "copy err: $e") }
+    }
+
+    private fun doShare() {
+        val text = segments.joinToString("\n")
+        if (text.isBlank()) return
+        try {
+            val i = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, text)
+            }
+            runOnUiThread { startActivity(Intent.createChooser(i, "Zdielat diktat")) }
+        } catch (e: Exception) { Log.e(TAG, "share err: $e") }
+    }
+
     private fun doSave(notify: Boolean) {
         val f = sessionFile
         if (f == null || !f.exists() || f.length() == 0L) {
-            textView.append("\n[Nie je čo uložiť]"); return
+            runOnUiThread { textView.append("\n[Nie je co ulozit]") }; return
         }
-        if (notify) notifyText("Diktát uložený", segments.joinToString("\n"))
+        if (notify) notifyText("Diktat ulozeny", segments.joinToString("\n"))
         sendSavedBroadcast()
-        textView.append("\n[Uložené: ${f.name}]")
+        runOnUiThread { textView.append("\n[Ulozene: ${f.name}]") }
     }
 
-    // ---------------- lifecycle ----------------
+    private fun doSavePublic() {
+        try {
+            val outDir = File("/sdcard/Documents/Diktat")
+            if (!outDir.exists()) outDir.mkdirs()
+            val name = "diktat_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".txt"
+            val out = File(outDir, name)
+            out.writeText(segments.joinToString("\n"), Charsets.UTF_8)
+            runOnUiThread {
+                Toast.makeText(this, "Ulozene do Documents/Diktat", Toast.LENGTH_LONG).show()
+                textView.append("\n[Ulozene: ${out.absolutePath}]")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "save_public err: $e")
+            runOnUiThread { Toast.makeText(this, "Ulozenie zlyhalo: $e", Toast.LENGTH_LONG).show() }
+        }
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         val ok = requestCode == REQUEST_RECORD_AUDIO_PERMISSION &&
@@ -398,15 +492,15 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         ActivityCompat.requestPermissions(this, permissions, REQUEST_RECORD_AUDIO_PERMISSION)
-        loadConfig(); loadCommands()
+        loadConfig(); loadCommands(); loadButtons()
 
         textView = findViewById(R.id.my_text)
         textView.movementMethod = ScrollingMovementMethod()
+        statusView = findViewById(R.id.status_view)
         recordButton = findViewById(R.id.record_button)
         recordButton.isEnabled = false
         recordButton.setOnClickListener { toggleRecord() }
 
-        // 8 volnych tlacidiel
         buttonViews.clear()
         buttonIds.forEach { id ->
             val v = findViewById<Button>(id)
@@ -424,7 +518,8 @@ class MainActivity : AppCompatActivity() {
             initVadModel(); initOfflineRecognizer()
             withContext(Dispatchers.Main) {
                 recordButton.isEnabled = true
-                textView.text = "Pripravené.\nPravidlá: ${rules.size}\nText: ${diktatDir().absolutePath}"
+                textView.text = "Pripravene.\nPravidla: ${rules.size}\nText: ${diktatDir().absolutePath}"
+                updateStatus()
             }
         }
     }
@@ -437,9 +532,10 @@ class MainActivity : AppCompatActivity() {
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(svc) else startService(svc)
             recordButton.setText(R.string.stop)
             isRecording = true
-            segments.clear()
+            segments.clear(); undoStack.clear(); redoStack.clear()
             sessionFile = File(diktatDir(), "diktat_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".txt")
             persist(); render(); lastNotifyAt = 0
+            if (cfgKeepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             vad.reset()
             recordingThread = thread(true) { processSamples() }
         } else {
@@ -447,7 +543,9 @@ class MainActivity : AppCompatActivity() {
             stopService(Intent(this, DiktatService::class.java))
             audioRecord!!.stop(); audioRecord!!.release(); audioRecord = null
             recordButton.setText(R.string.start)
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
+        updateStatus()
     }
 
     private fun initVadModel() {
@@ -490,7 +588,7 @@ class MainActivity : AppCompatActivity() {
                     vad.pop()
                 }
             }
-            if (++tick % 20 == 0) { // ~0.6s
+            if (++tick % 20 == 0) {
                 scope.launch { maybeReloadConfig() }
             }
         }
@@ -500,7 +598,7 @@ class MainActivity : AppCompatActivity() {
     private fun initOfflineRecognizer() {
         val config = OfflineRecognizerConfig(
             featConfig = getFeatureConfig(sampleRate = sampleRateInHz, featureDim = 80),
-            modelConfig = getOfflineModelConfig(type = 40)!!, // SK Parakeet
+            modelConfig = getOfflineModelConfig(type = 40)!!,
         )
         offlineRecognizer = OfflineRecognizer(assetManager = application.assets, config = config)
     }
