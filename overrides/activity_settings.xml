@@ -13,21 +13,42 @@
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:text="Nastavenia" android:textColor="#FFFFFF" android:textSize="22sp" android:textStyle="bold" />
 
-        <!-- JAZYK -->
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:layout_marginTop="18dp" android:text="Jazyk rozpoznavania (prepis)" android:textColor="#8A93A6" />
-        <Spinner android:id="@+id/sp_lang" android:layout_width="match_parent" android:layout_height="wrap_content" />
+            android:layout_marginTop="18dp" android:text="Jazyk prepisu" android:textColor="#8A93A6" />
+        <Spinner android:id="@+id/sp_lang" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:background="#1B1F29" />
+
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" android:text="Priečinok pre externé ASR modely (/lang/)" android:textColor="#8A93A6" />
+        <EditText android:id="@+id/ed_asrdir" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:background="#1B1F29" android:hint="/sdcard/Download/Speak-o/models/asr"
+            android:inputType="textUri" android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
 
         <!-- PREKLAD -->
         <Switch android:id="@+id/sw_translate" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="18dp" android:text="Zapnut preklad" android:textColor="#FFFFFF" />
+
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-            android:text="Cielovy jazyk prekladu" android:textColor="#8A93A6" />
-        <Spinner android:id="@+id/sp_target" android:layout_width="match_parent" android:layout_height="wrap_content" />
+            android:text="Engine prekladu" android:textColor="#8A93A6" />
+        <Spinner android:id="@+id/sp_engine" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:background="#1B1F29" />
+
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="Cielovy jazyk" android:textColor="#8A93A6" />
+        <Spinner android:id="@+id/sp_target" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:background="#1B1F29" />
+
+        <Button android:id="@+id/btn_dlmlkit" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:backgroundTint="#2563A6" android:text="Stiahnuť ML Kit model (offline)"
+            android:textColor="#FFFFFF" />
+
         <EditText android:id="@+id/ed_transurl" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:hint="Lokalny server URL (http://127.0.0.1:8080/v1/chat/completions)" android:textColor="#E8ECF5" android:textColorHint="#5C6478" android:inputType="textUri" />
+            android:layout_marginTop="6dp" android:background="#1B1F29"
+            android:hint="GGUF: server URL" android:inputType="textUri"
+            android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
         <EditText android:id="@+id/ed_transmodel" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:hint="Nazov modelu (gemma)" android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
+            android:background="#1B1F29" android:hint="GGUF: nazov modelu"
+            android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
 
         <!-- PIPANIE -->
         <Switch android:id="@+id/sw_beep" android:layout_width="match_parent" android:layout_height="wrap_content"
@@ -37,15 +58,18 @@
         <Switch android:id="@+id/sw_operit" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:layout_marginTop="18dp" android:text="Posielat do Operitu" android:textColor="#FFFFFF" />
         <EditText android:id="@+id/ed_port" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:hint="Operit port (8094)" android:textColor="#E8ECF5" android:textColorHint="#5C6478" android:inputType="number" />
+            android:background="#1B1F29" android:hint="Operit port (8094)" android:inputType="number"
+            android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
         <EditText android:id="@+id/ed_token" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:hint="Operit token" android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
+            android:background="#1B1F29" android:hint="Operit token"
+            android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
         <EditText android:id="@+id/ed_chat" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:hint="Operit chat_id" android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
+            android:background="#1B1F29" android:hint="Operit chat_id"
+            android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
 
         <Button android:id="@+id/btn_save" android:layout_width="match_parent" android:layout_height="54dp"
             android:layout_marginTop="24dp" android:backgroundTint="#2E7D5B" android:text="ULOZIT" android:textColor="#FFFFFF" />
         <Button android:id="@+id/btn_back" android:layout_width="match_parent" android:layout_height="wrap_content"
-            android:text="Spat" />
+            android:text="Spat" android:textColor="#E8ECF5" android:backgroundTint="#333B4D" />
     </LinearLayout>
 </ScrollView>
