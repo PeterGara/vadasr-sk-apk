@@ -74,7 +74,7 @@ private const val MODE_TRANS = 0
 private const val MODE_TRANSLATE = 1
 private const val MODE_RECORDS = 2
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), EngineHost {
 
     private lateinit var recordButton: Button
     private lateinit var editText: EditText
@@ -122,6 +122,122 @@ class MainActivity : AppCompatActivity() {
     private val buttonViews = ArrayList<Button>()
     private val recordFiles = ArrayList<File>()
 
+    // ---------------- dynamicke tlacidla (lubovolny pocet z buttons.txt) ----------------
+    private fun buildDynamicButtons() {
+        val row1 = findViewById<android.widget.LinearLayout>(R.id.btn_row1)
+        val row2 = findViewById<android.widget.LinearLayout>(R.id.btn_row2)
+        row1.removeAllViews(); row2.removeAllViews()
+        buttonViews.clear()
+
+        val defs = parseButtons()
+        // rozdel do 2 riadkov po 4
+        var idx = 0
+        for (d in defs) {
+            val row = if (idx < 4) row1 else row2
+            val b = android.widget.Button(this)
+            val lp = android.widget.LinearLayout.LayoutParams(0, dp(44), 1f)
+            if ((idx % 4) != 0) lp.marginStart = dp(4)
+            b.layoutParams = lp
+            b.text = d.first
+            b.textSize = 11f
+            b.isAllCaps = false
+            b.minWidth = 0
+            b.setPadding(dp(2), 0, dp(2), 0)
+            b.background = Theme.rounded(Theme.neutral, 10)
+            b.setTextColor(Theme.c(Theme.text))
+            b.setOnClickListener { runAction(d.second) }
+            row.addView(b)
+            buttonViews.add(b)
+            idx++
+        }
+        // ak je viac ako 8, dalsie sa ignoruju (2 riadky) - da sa rozsirit
+    }
+
+    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+
+    private fun parseButtons(): List<Pair<String, String>> {
+        val out = ArrayList<Pair<String, String>>()
+        try {
+            val f = buttonsFile()
+            if (!f.exists()) f.writeText(
+                "1|¶ Odst.|paragraph\n2|Uloz|save\n3|Kopir.|copy\n" +
+                "4|Zdiel.|share\n5|Cas|time+append: \n6|Uloz TXT|save_public\n7|Notif.|notify\n8|Stop|stop\n", Charsets.UTF_8)
+            f.readLines().forEach { line ->
+                val s = line.trim()
+                if (s.isEmpty() || s.startsWith("#")) return@forEach
+                val p = s.split('|', limit = 3)
+                if (p.size == 3) out.add(p[1].trim() to p[2].trim())
+            }
+        } catch (e: Exception) { Log.e(TAG, "parseButtons err: $e") }
+        return out.sortedBy { 0 }
+    }
+
+    // ---------------- EngineHost ----------------
+    override fun getText(): String = txt()
+    override fun setText(s: String) { setTxt(s) }
+    override fun beep(n: Int) { beep(n) }
+    override fun action(name: String) {
+        when (name) {
+            "send_new", "send_all" -> sendToOperit()
+            "del_veta" -> doDelVeta()
+            "del_odstavec" -> doDelOdstavec()
+            "clear" -> doClear()
+            "undo" -> doUndo()
+            "copy" -> doCopy()
+            "save" -> doSavePublic()
+            "share" -> doShare()
+            "notify" -> notifyText(txt())
+            "paste_app" -> doPasteToApp()
+            "records" -> setMode(MODE_RECORDS)
+            "translate" -> { setMode(MODE_TRANSLATE); doTranslateNow() }
+            "stop" -> stopRecording()
+            "start" -> startRecording()
+            "trim_audio" -> pickAudioForTrim()
+            "transcribe_file" -> pickAudioForTranscribe()
+        }
+    }
+
+    // ---------------- vzhľad z theme.txt (bez buildu) ----------------
+    private fun applyTheme() {
+        try {
+            window.decorView.background = Theme.background()
+            val root = findViewById<View>(android.R.id.content)
+            root.setBackgroundDrawable(Theme.background())
+
+            statusView.setTextColor(Theme.c(Theme.textDim))
+            editText.setTextColor(Theme.c(Theme.text))
+            editText.setHintTextColor(Theme.c(Theme.hint))
+            editText.background = Theme.rounded(Theme.card, Theme.radius)
+            translateText.setTextColor(Theme.c(Theme.text))
+            translateText.setHintTextColor(Theme.c(Theme.hint))
+            translateText.background = Theme.rounded(Theme.cardAlt, Theme.radius)
+
+            // velke mikrofonove tlacidlo
+            val sz = dp(Theme.recordSize)
+            recordButton.layoutParams = (recordButton.layoutParams as android.widget.LinearLayout.LayoutParams).apply {
+                width = sz; height = sz
+            }
+            recordButton.background = Theme.ellipse(if (isRecording) Theme.danger else Theme.accent)
+
+            btnMode1.background = Theme.rounded(if (mode == MODE_TRANS) Theme.accent else Theme.neutral, 22)
+            btnMode2.background = Theme.rounded(if (mode == MODE_TRANSLATE) Theme.accent else Theme.neutral, 22)
+            btnMode3.background = Theme.rounded(if (mode == MODE_RECORDS) Theme.accent else Theme.neutral, 22)
+            btnMode1.setTextColor(Theme.c(Theme.text))
+            btnMode2.setTextColor(Theme.c(Theme.text))
+            btnMode3.setTextColor(Theme.c(Theme.text))
+
+            findViewById<android.widget.Button>(R.id.btn_menu).background = Theme.rounded(Theme.neutral, 12)
+
+            findViewById<android.widget.Button>(R.id.act_send).background = Theme.rounded(Theme.primary, 14)
+            findViewById<android.widget.Button>(R.id.act_dellast).background = Theme.rounded(Theme.neutral, 14)
+            findViewById<android.widget.Button>(R.id.act_clear).background = Theme.rounded(Theme.danger, 14)
+            findViewById<android.widget.Button>(R.id.act_copy).background = Theme.rounded(Theme.neutral, 14)
+
+            // dynamicke tlacidla
+            buttonViews.forEach { it.background = Theme.rounded(Theme.neutral, 10); it.setTextColor(Theme.c(Theme.text)) }
+        } catch (e: Exception) { Log.e(TAG, "applyTheme err: $e") }
+    }
+
     // ---------------- pipanie ----------------
     private fun beepFor(kind: String) {
         if (!Settings.beep) return
@@ -165,6 +281,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         ActivityCompat.requestPermissions(this, permissions, REQ_MIC)
         Settings.init(getExternalFilesDir(null) ?: filesDir)
+        Theme.init(getExternalFilesDir(null) ?: filesDir)
 
         recordButton = findViewById(R.id.record_button)
         editText = findViewById(R.id.my_text)
@@ -203,21 +320,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         buttonViews.clear()
-        buttonIds.forEach { id ->
-            val v = findViewById<Button>(id)
-            buttonViews.add(v)
-            v.visibility = View.GONE
-            v.setOnClickListener {
-                val n = buttonIds.indexOf(id) + 1
-                val f = buttonsFile()
-                if (f.exists()) f.readLines().forEach { line ->
-                    val s = line.trim(); if (s.isEmpty() || s.startsWith("#")) return@forEach
-                    val p = s.split('|', limit = 3)
-                    if (p.size == 3 && p[0].trim().toIntOrNull() == n) runAction(p[2].trim())
-                }
-            }
-        }
-        loadCommands(); loadButtons()
+        buildDynamicButtons()
+        loadCommands()
+        loadButtons()
+        applyTheme()
         setMode(MODE_TRANS)
         startWatchdog()
 
@@ -784,7 +890,13 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {}
     }
 
-    private fun runAction(action: String) = when (action) {
+    private fun runAction(action: String) {
+        // najprv skus ENGINE (podporuje retazenie cez + a vsetky primitiva)
+        if (Engine.run(action, this)) return
+        Log.w(TAG, "neznama akcia: " + action)
+    }
+
+    private fun runActionOld(action: String) = when (action) {
         "copy" -> doCopy()
         "save" -> doSavePublic()
         "paste_app" -> doPasteToApp()
@@ -1075,6 +1187,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         Settings.init(getExternalFilesDir(null) ?: filesDir)
+        Theme.init(getExternalFilesDir(null) ?: filesDir)
         setMode(mode); loadCommands(); loadButtons()
         lifecycleScope.launch(Dispatchers.IO) { initAsr() }
     }
