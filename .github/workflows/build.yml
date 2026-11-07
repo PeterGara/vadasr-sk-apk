@@ -1,4 +1,4 @@
-name: build-sk-vad-asr-apk
+name: build-speako-apk
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 concurrency:
-  group: sk-apk
+  group: speako
   cancel-in-progress: false
 
 permissions:
@@ -24,7 +24,7 @@ jobs:
           path: src
           fetch-depth: 1
 
-      - name: Checkout overrides (SK APK custom sources)
+      - name: Checkout overrides
         uses: actions/checkout@v4
         with:
           path: ovr
@@ -34,29 +34,26 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Display NDK
-        shell: bash
-        run: echo "NDK=${ANDROID_NDK_LATEST_HOME}" && ls -d ${ANDROID_NDK_LATEST_HOME}
-
-      - name: Build native libs (arm64-v8a)
+      - name: Build native libs
         working-directory: src
         shell: bash
         run: |
           export ANDROID_NDK=$ANDROID_NDK_LATEST_HOME
-          cmake --version
           ./build-android-arm64-v8a.sh
 
-      - name: Apply overrides (full replacement - no fragile patching)
+      - name: Apply overrides
         shell: bash
         run: |
           set -e
           A=src/android/SherpaOnnxVadAsr/app/src/main
           cp -v ovr/overrides/MainActivity.kt $A/java/com/k2fsa/sherpa/onnx/MainActivity.kt
+          cp -v ovr/overrides/Settings.kt $A/java/com/k2fsa/sherpa/onnx/Settings.kt
+          cp -v ovr/overrides/ApiClient.kt $A/java/com/k2fsa/sherpa/onnx/ApiClient.kt
+          cp -v ovr/overrides/SettingsActivity.kt $A/java/com/k2fsa/sherpa/onnx/SettingsActivity.kt
           cp -v ovr/overrides/DiktatService.kt $A/java/com/k2fsa/sherpa/onnx/DiktatService.kt
           cp -v ovr/overrides/activity_main.xml $A/res/layout/activity_main.xml
+          cp -v ovr/overrides/activity_settings.xml $A/res/layout/activity_settings.xml
           cp -v ovr/overrides/AndroidManifest.xml $A/AndroidManifest.xml
-          grep -c 'type = 40' $A/java/com/k2fsa/sherpa/onnx/MainActivity.kt
-          grep -c 'DiktatService' $A/AndroidManifest.xml
 
       - name: Insert SK Parakeet model into assets
         working-directory: src
@@ -73,7 +70,6 @@ jobs:
           curl -SL --retry 3 -o $A/silero_vad.onnx https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
           SZ=$(stat -c%s $D/encoder.int8.onnx)
           [ "$SZ" -gt 650000000 ] || { echo "CHYBA encoder $SZ"; exit 1; }
-          echo "encoder OK: $SZ"
 
       - name: Copy native libs to jniLibs
         working-directory: src
@@ -111,24 +107,13 @@ jobs:
           /usr/local/lib/android/sdk/build-tools/$BT/apksigner sign \
             --ks keystore.jks --ks-key-alias sk \
             --ks-pass pass:skpass123 --key-pass pass:skpass123 \
-            --out sk-vad-asr.apk aligned.apk
-          /usr/local/lib/android/sdk/build-tools/$BT/apksigner verify -v sk-vad-asr.apk | head -3
-          ls -lh sk-vad-asr.apk
+            --out speako.apk aligned.apk
+          ls -lh speako.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sk-vad-asr-apk
-          path: sk-vad-asr.apk
+          name: speako-apk
+          path: speako.apk
           if-no-files-found: error
           retention-days: 90
-
-      - name: Publish APK to Release (public download, no token)
-        uses: softprops/action-gh-release@v2
-        with:
-          tag: build-${{ github.run_number }}
-          name: SK diktat build ${{ github.run_number }}
-          files: sk-vad-asr.apk
-          make_latest: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
