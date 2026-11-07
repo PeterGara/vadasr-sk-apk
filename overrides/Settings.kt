@@ -4,7 +4,7 @@ import org.json.JSONObject
 import java.io.File
 
 /**
- * Nastavenia Speak-o — ukladaju sa do settings.json.
+ * Nastavenia Speak-o - ukladaju sa do settings.json.
  * Vsetko sa da nastavit v apke (obrazovka Nastavenia).
  */
 object Settings {
@@ -15,6 +15,12 @@ object Settings {
     // ine = externy model z asrDir/<lang>/
     var asrLang = "sk"
     var asrModelDir = "/sdcard/Download/Speak-o/models/asr"
+
+    // VAD / citlivost
+    var vadThreshold = 0.5f      // 0.10 - 0.90
+    var minSilence = 0.4f        // sekundy ticha na ukoncenie vety
+    var noiseSuppress = true     // potlacenie hluku (NS)
+    var agc = false              // automaticke zosilnenie
 
     // preklad: "mlkit" (offline, jednoduche) alebo "gguf" (vlastny model/server)
     var translateEngine = "mlkit"
@@ -56,6 +62,10 @@ object Settings {
             val j = JSONObject(file.readText())
             asrLang = j.optString("asrLang", asrLang)
             asrModelDir = j.optString("asrModelDir", asrModelDir)
+            vadThreshold = j.optDouble("vadThreshold", 0.5).toFloat()
+            minSilence = j.optDouble("minSilence", 0.4).toFloat()
+            noiseSuppress = j.optBoolean("noiseSuppress", true)
+            agc = j.optBoolean("agc", false)
             translateEngine = j.optString("translateEngine", translateEngine)
             translateEnabled = j.optBoolean("translateEnabled", false)
             translateTarget = j.optString("translateTarget", "EN")
@@ -87,6 +97,10 @@ object Settings {
             val j = JSONObject()
             j.put("asrLang", asrLang)
             j.put("asrModelDir", asrModelDir)
+            j.put("vadThreshold", vadThreshold.toDouble())
+            j.put("minSilence", minSilence.toDouble())
+            j.put("noiseSuppress", noiseSuppress)
+            j.put("agc", agc)
             j.put("translateEngine", translateEngine)
             j.put("translateEnabled", translateEnabled)
             j.put("translateTarget", translateTarget)
