@@ -11,360 +11,645 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
-import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.speech.tts.TextToSpeech
-import android.text.InputType
+import android.text.method.ScrollingMovementMethod
 import android.util.Log
 import android.view.WindowManager
-import android.widget.*
+import android.widget.Button
+import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import com.k2fsa.sherpa.onnx.OfflineRecognizer
+import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
+import com.k2fsa.sherpa.onnx.R
+import com.k2fsa.sherpa.onnx.Vad
+import com.k2fsa.sherpa.onnx.getFeatureConfig
+import com.k2fsa.sherpa.onnx.getOfflineModelConfig
+import com.k2fsa.sherpa.onnx.getVadModelConfig
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.concurrent.thread
 import androidx.lifecycle.lifecycleScope
-import com.k2fsa.sherpa.onnx.*
-import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileOutputStream
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.ArrayDeque
+import java.util.Date
+import java.util.Locale
 
-private const val TAG2 = "Speak-o"
-private const val REQ_MIC2 = 200
+private const val TAG = "sherpa-onnx"
+private const val REQUEST_RECORD_AUDIO_PERMISSION = 200
 
-class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
+// v4: v3 (funkcny HTTP send do Operitu) + vzdy viditelne tlacidla (Posli, Zmaz vsetko, Zmaz poslednu)
+// + menu (⋮). Vsetko konfigurovatelne za behu z buttons.txt / config.txt -> opravy bez buildu.
+class MainActivity : AppCompatActivity() {
 
-    private lateinit var edit: EditText
-    private lateinit var bigBtn: Button
-    private lateinit var status: TextView
-    private lateinit var langBtn: Button
-
+    private lateinit var recordButton: Button
+    private lateinit var textView: TextView
+    private lateinit var statusView: TextView
     private lateinit var vad: Vad
-    private var recognizer: OfflineRecognizer? = null
     private var audioRecord: AudioRecord? = null
-
-    private val sampleRate = 16000
-    private val channel = AudioFormat.CHANNEL_IN_MONO
-    private val format = AudioFormat.ENCODING_PCM_16BIT
+    private var recordingThread: Thread? = null
     private val audioSource = MediaRecorder.AudioSource.VOICE_RECOGNITION
-    private val perms = arrayOf(Manifest.permission.RECORD_AUDIO)
+    private val sampleRateInHz = 16000
+    private val channelConfig = AudioFormat.CHANNEL_IN_MONO
+    private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
+    private val permissions: Array<String> = arrayOf(Manifest.permission.RECORD_AUDIO)
+    private lateinit var offlineRecognizer: OfflineRecognizer
 
-    @Volatile private var recording = false
     private var sessionFile: File? = null
-    private var wavFile: File? = null
-    private var pcmOut: FileOutputStream? = null
-    private val main = Handler(Looper.getMainLooper())
+    private val segments = ArrayList<String>()
 
-    private var tts: TextToSpeech? = null
-    private var ttsReady = false
-    private var player: MediaPlayer? = null
+    private val undoStack = ArrayDeque<String>()
+    private val redoStack = ArrayDeque<String>()
 
-    private val undo = ArrayDeque<String>()
-    private val redo = ArrayDeque<String>()
+    private var cfgThreshold = 0.5f
+    private var cfgMinSilence = 0.4f
+    private var cfgCmdMaxWords = 4
+    private var cfgNotifyMode = "on_save"
+    private var cfgNotifyIntervalS = 30
+    private var cfgKeepScreenOn = true
+    private var cfgOperitPort = "8094"
+    private var cfgOperitToken = ""
+    private var cfgOperitChatId = "e2b301b9-aba0-4d0b-805f-49bdbac6c406"
+
+    private data class Rule(val phrase: String, val action: String)
+    private var rules = listOf<Rule>()
+    private var cfgMtime = 0L
+    private var cmdMtime = 0L
+
+    private var lastNotifyAt = 0L
+
+    @Volatile
+    private var isRecording = false
+
+    private data class BtnCfg(val label: String, val action: String)
+    private val buttonActions = HashMap<Int, BtnCfg>()
+    private var btnMtime = 0L
+    private val buttonIds = listOf(
+        R.id.btn_1, R.id.btn_2, R.id.btn_3, R.id.btn_4,
+        R.id.btn_5, R.id.btn_6, R.id.btn_7, R.id.btn_8
+    )
+    private val buttonViews = ArrayList<Button>()
+
+    private fun buttonsFile(): File = File(filesDirCfg(), "buttons.txt")
+
+    private fun writeDefaultButtons() {
+        buttonsFile().writeText(
+            "# === TLACIDLA: poradie 1-8 | popis | akcia ===\n" +
+            "# akcie: undo/redo/paragraph/save/save_public/clear/notify/send_chat/copy/share/time/del_last/noop\n" +
+            "1|\u00b6 Odst.|paragraph\n" +
+            "2|Uloz|save\n" +
+            "3|Kopir.|copy\n" +
+            "4|Zdiel.|share\n" +
+            "5|Cas|time\n" +
+            "6|Uloz TXT|save_public\n" +
+            "7|Notif.|notify\n" +
+            "8|Stop|stop\n",
+            Charsets.UTF_8
+        )
+    }
+
+    private fun loadButtons() {
+        try {
+            val f = buttonsFile()
+            if (!f.exists()) writeDefaultButtons()
+            btnMtime = f.lastModified()
+            buttonActions.clear()
+            f.readLines().forEach { line ->
+                val s = line.trim()
+                if (s.isEmpty() || s.startsWith("#")) return@forEach
+                val p = s.split('|', limit = 3)
+                if (p.size != 3) return@forEach
+                val n = p[0].trim().toIntOrNull() ?: return@forEach
+                if (n in 1..8) buttonActions[n] = BtnCfg(p[1].trim(), p[2].trim())
+            }
+            runOnUiThread {
+                buttonViews.forEachIndexed { i, v ->
+                    val cfg = buttonActions[i + 1]
+                    v.text = cfg?.label ?: "B${i + 1}"
+                    v.visibility = if (cfg == null) android.view.View.GONE else android.view.View.VISIBLE
+                }
+            }
+        } catch (e: Exception) { Log.e(TAG, "buttons err: $e") }
+    }
+
+    private fun filesDirCfg(): File = getExternalFilesDir(null) ?: filesDir
+    private fun configFile(): File = File(filesDirCfg(), "config.txt")
+    private fun commandsFile(): File = File(filesDirCfg(), "commands.txt")
+
+    private fun writeDefaultConfig() {
+        configFile().writeText(
+            "# === KONFIG ===\n" +
+            "threshold=0.5\n" +
+            "min_silence=0.4\n" +
+            "cmd_max_words=4\n" +
+            "notify_mode=on_save\n" +
+            "notify_interval_s=30\n" +
+            "keep_screen_on=true\n" +
+            "operit_port=8094\n" +
+            "operit_token=SEM_VLOZ_TOKEN\n" +
+            "operit_chat_id=e2b301b9-aba0-4d0b-805f-49bdbac6c406\n",
+            Charsets.UTF_8
+        )
+    }
+
+    private fun writeDefaultCommands() {
+        commandsFile().writeText(
+            "# === PRAVIDLA: fraza | akcia ===\n" +
+            "prec vetu|undo\n" +
+            "vrat to|redo\n" +
+            "novy odstavec|paragraph\n" +
+            "posli|send_chat\n" +
+            "posli do operitu|send_chat\n" +
+            "vymaz vsetko|clear\n" +
+            "zmaz poslednu|del_last\n" +
+            "uloz to|save\n" +
+            "uloz do suboru|save_public\n" +
+            "skopiruj|copy\n" +
+            "zdielaj|share\n" +
+            "daj vediet|notify\n" +
+            "cas|time\n",
+            Charsets.UTF_8
+        )
+    }
+
+    private fun normalize(s: String): String {
+        val m = mapOf(
+            '\u010d' to 'c', '\u0161' to 's', '\u017e' to 'z', '\u00fd' to 'y', '\u00e1' to 'a', '\u00ed' to 'i',
+            '\u00e9' to 'e', '\u00f3' to 'o', '\u00fa' to 'u', '\u00f4' to 'o', '\u00e4' to 'a', '\u013e' to 'l',
+            '\u0148' to 'n', '\u0165' to 't', '\u010f' to 'd', '\u0155' to 'r'
+        )
+        return s.lowercase().map { m[it] ?: it }.joinToString("")
+    }
+
+    private fun loadConfig() {
+        try {
+            val f = configFile()
+            if (!f.exists()) { writeDefaultConfig() }
+            cfgMtime = f.lastModified()
+            f.readLines().forEach { line ->
+                val s = line.trim()
+                if (s.isEmpty() || s.startsWith("#")) return@forEach
+                val i = s.indexOf('='); if (i < 0) return@forEach
+                val k = s.substring(0, i).trim(); val v = s.substring(i + 1).trim()
+                when (k) {
+                    "threshold" -> cfgThreshold = v.toFloatOrNull() ?: cfgThreshold
+                    "min_silence" -> cfgMinSilence = v.toFloatOrNull() ?: cfgMinSilence
+                    "cmd_max_words" -> cfgCmdMaxWords = v.toIntOrNull() ?: cfgCmdMaxWords
+                    "notify_mode" -> cfgNotifyMode = v
+                    "notify_interval_s" -> cfgNotifyIntervalS = v.toIntOrNull() ?: cfgNotifyIntervalS
+                    "keep_screen_on" -> cfgKeepScreenOn = v.equals("true", true)
+                    "operit_port" -> cfgOperitPort = v
+                    "operit_token" -> cfgOperitToken = v
+                    "operit_chat_id" -> cfgOperitChatId = v
+                }
+            }
+        } catch (e: Exception) { Log.e(TAG, "config err: $e") }
+    }
+
+    private fun loadCommands() {
+        try {
+            val f = commandsFile()
+            if (!f.exists()) { writeDefaultCommands() }
+            cmdMtime = f.lastModified()
+            rules = f.readLines().mapNotNull { line ->
+                val s = line.trim()
+                if (s.isEmpty() || s.startsWith("#")) return@mapNotNull null
+                val p = s.split('|', limit = 2)
+                if (p.size != 2) return@mapNotNull null
+                Rule(p[0].trim(), p[1].trim())
+            }.sortedByDescending { it.phrase.length }
+        } catch (e: Exception) { Log.e(TAG, "commands err: $e") }
+    }
+
+    private fun maybeReloadConfig() {
+        try {
+            val c = configFile(); val d = commandsFile(); val b = buttonsFile()
+            val cm = if (c.exists()) c.lastModified() else 0L
+            val dm = if (d.exists()) d.lastModified() else 0L
+            val bm = if (b.exists()) b.lastModified() else 0L
+            if (cm != cfgMtime || dm != cmdMtime || bm != btnMtime) {
+                loadConfig(); loadCommands(); loadButtons()
+                runOnUiThread { textView.append("\n[konfig nacitany]") }
+            }
+        } catch (e: Exception) { }
+    }
+
+    private fun notifyText(title: String, text: String) {
+        try {
+            val nm = getSystemService(NotificationManager::class.java)
+            if (Build.VERSION.SDK_INT >= 26) {
+                nm.createNotificationChannel(
+                    NotificationChannel("diktat_text", "Diktat text", NotificationManager.IMPORTANCE_HIGH)
+                )
+            }
+            @Suppress("DEPRECATION")
+            val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, "diktat_text")
+                    else Notification.Builder(this)
+            val n = b.setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle(title)
+                .setContentText(text.take(200))
+                .setStyle(Notification.BigTextStyle().bigText(text))
+                .setAutoCancel(true).build()
+            nm.notify((System.currentTimeMillis() % 100000).toInt(), n)
+        } catch (e: Exception) { Log.e(TAG, "notify err: $e") }
+    }
+
+    private fun diktatDir(): File {
+        val d = File(filesDirCfg(), "Diktat"); if (!d.exists()) d.mkdirs(); return d
+    }
+
+    private fun persist() {
+        val f = sessionFile ?: return
+        try {
+            FileOutputStream(f, false).use {
+                it.write(segments.joinToString("\n").toByteArray(Charsets.UTF_8)); it.flush()
+            }
+        } catch (e: Exception) { Log.e(TAG, "persist err: $e") }
+    }
+
+    private fun render() { textView.text = segments.joinToString("\n") }
+
+    private fun updateStatus() {
+        val chars = segments.joinToString("\n").length
+        val words = segments.joinToString(" ").split(Regex("\\s+")).filter { it.isNotBlank() }.size
+        val rec = if (isRecording) "NAHRAVA" else "stop"
+        statusView.text = "$rec | ${segments.size} odst. | $words slov | $chars znakov"
+    }
+
+    private fun notifyIfNeeded(force: Boolean) {
+        if (cfgNotifyMode == "off") return
+        if (!force && cfgNotifyMode != "on_change") return
+        val now = System.currentTimeMillis()
+        if (!force && now - lastNotifyAt < cfgNotifyIntervalS * 1000L) return
+        lastNotifyAt = now
+        val txt = segments.joinToString("\n")
+        if (txt.isNotBlank()) notifyText("Diktat", txt)
+    }
+
+    private fun pushHistory() {
+        undoStack.addLast(segments.joinToString("\n"))
+        if (undoStack.size > 200) undoStack.removeFirst()
+        redoStack.clear()
+    }
+
+    private fun restore(state: String) {
+        segments.clear()
+        if (state.isNotEmpty()) state.split("\n").forEach { segments.add(it) }
+        persist(); runOnUiThread { render(); updateStatus() }
+    }
+
+    private fun doUndo() {
+        if (undoStack.isEmpty()) return
+        redoStack.addLast(segments.joinToString("\n"))
+        restore(undoStack.removeLast())
+        runOnUiThread { textView.append("\n[spat]") }
+    }
+
+    private fun doRedo() {
+        if (redoStack.isEmpty()) return
+        undoStack.addLast(segments.joinToString("\n"))
+        restore(redoStack.removeLast())
+        runOnUiThread { textView.append("\n[znova]") }
+    }
+
+    /** Zmaze poslednu vlozenu cast (segment). */
+    private fun doDelLast() {
+        if (segments.isEmpty()) { runOnUiThread { Toast.makeText(this, "Prazdne", Toast.LENGTH_SHORT).show() } ; return }
+        pushHistory()
+        segments.removeAt(segments.lastIndex)
+        persist(); runOnUiThread { render(); updateStatus(); textView.append("\n[zmazana posledna]") }
+    }
+
+    private fun runAction(action: String) {
+        when {
+            action == "undo" -> doUndo()
+            action == "redo" -> doRedo()
+            action == "del_last" -> doDelLast()
+            action == "paragraph" -> {
+                pushHistory(); segments.add(""); persist()
+                runOnUiThread { render(); updateStatus() }
+            }
+            action == "stop" -> runOnUiThread { if (isRecording) toggleRecord() }
+            action == "save" -> runOnUiThread { doSave(notify = true) }
+            action == "save_public" -> runOnUiThread { doSavePublic() }
+            action == "clear" -> {
+                pushHistory(); segments.clear(); persist()
+                runOnUiThread { render(); updateStatus(); textView.append("\n[vymazane]") }
+            }
+            action == "notify" -> notifyIfNeeded(force = true)
+            action == "copy" -> doCopy()
+            action == "share" -> doShare()
+            action == "time" -> {
+                pushHistory()
+                segments.add("[" + SimpleDateFormat("HH:mm", Locale.US).format(Date()) + "]")
+                persist(); runOnUiThread { render(); updateStatus() }
+            }
+            action == "send_chat" -> sendToOperit()
+            action == "noop" -> { }
+            action.startsWith("append:") -> {
+                pushHistory(); segments.add(action.removePrefix("append:")); persist()
+                runOnUiThread { render(); updateStatus() }
+            }
+            action.startsWith("shell:") -> {
+                try {
+                    ProcessBuilder("sh", "-c", action.removePrefix("shell:"))
+                        .redirectErrorStream(true).start().inputStream.bufferedReader().readText()
+                } catch (e: Exception) { Log.e(TAG, "shell err: $e") }
+            }
+        }
+    }
+
+    private fun matchAndRun(segmentText: String): Boolean {
+        val t = normalize(segmentText.trim())
+        if (t.isEmpty()) return false
+        val words = t.split(Regex("\\s+")).size
+        if (words > cfgCmdMaxWords) return false
+        for (r in rules) {
+            if (t.startsWith(normalize(r.phrase))) { runAction(r.action); return true }
+        }
+        return false
+    }
+
+    private fun applySegment(text: String) {
+        if (matchAndRun(text)) return
+        pushHistory()
+        segments.add(text); persist()
+        runOnUiThread { render(); updateStatus() }
+        notifyIfNeeded(force = false)
+    }
+
+    private fun sendToOperit() {
+        val text = segments.joinToString("\n")
+        try {
+            val dir = diktatDir()
+            var p = sessionFile?.absolutePath
+            if (p == null || !File(p).exists()) {
+                p = dir.listFiles()?.maxByOrNull { it.lastModified() }?.absolutePath
+            }
+            if (p != null) File(dir, "SENDME.txt").writeText(p)
+        } catch (e: Exception) { }
+
+        thread(true) {
+            val ok = httpSend(text)
+            runOnUiThread {
+                textView.post {
+                    textView.append(if (ok) "\n[odoslane do Operitu OK]" else "\n[CHYBA odoslania: token/port?]")
+                }
+                Toast.makeText(this, if (ok) "Poslane do Operitu" else "Odoslanie zlyhalo", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun httpSend(message: String): Boolean {
+        try {
+            if (cfgOperitToken.isBlank() || cfgOperitToken == "SEM_VLOZ_TOKEN") {
+                Log.e(TAG, "operit_token nie je nastaveny v config.txt")
+                return false
+            }
+            val json = "{\"message\":\"" + esc(message) + "\"," +
+                    "\"response_mode\":\"sync\"," +
+                    "\"show_floating\":false," +
+                    "\"return_tool_status\":false," +
+                    "\"chat_id\":\"" + esc(cfgOperitChatId) + "\"}"
+            val url = URL("http://127.0.0.1:" + cfgOperitPort + "/api/external-chat")
+            val c = url.openConnection() as HttpURLConnection
+            c.requestMethod = "POST"
+            c.doOutput = true
+            c.connectTimeout = 8000
+            c.readTimeout = 120000
+            c.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            c.setRequestProperty("Authorization", "Bearer " + cfgOperitToken)
+            OutputStreamWriter(c.outputStream, Charsets.UTF_8).use { it.write(json) }
+            val code = c.responseCode
+            Log.i(TAG, "HTTP external-chat -> $code")
+            c.disconnect()
+            return code in 200..299
+        } catch (e: Exception) {
+            Log.e(TAG, "httpSend err: $e")
+            return false
+        }
+    }
+
+    private fun esc(s: String): String {
+        val sb = StringBuilder()
+        for (ch in s) {
+            when (ch) {
+                '\\' -> sb.append("\\\\")
+                '"' -> sb.append("\\\"")
+                '\n' -> sb.append("\\n")
+                '\r' -> sb.append("\\r")
+                '\t' -> sb.append("\\t")
+                else -> if (ch < ' ') sb.append(" ") else sb.append(ch)
+            }
+        }
+        return sb.toString()
+    }
+
+    private fun doCopy() {
+        try {
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("diktat", segments.joinToString("\n")))
+            runOnUiThread { Toast.makeText(this, "Skopirovane", Toast.LENGTH_SHORT).show() }
+        } catch (e: Exception) { Log.e(TAG, "copy err: $e") }
+    }
+
+    private fun doShare() {
+        val text = segments.joinToString("\n")
+        if (text.isBlank()) return
+        try {
+            val i = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, text)
+            }
+            runOnUiThread { startActivity(Intent.createChooser(i, "Zdielat diktat")) }
+        } catch (e: Exception) { Log.e(TAG, "share err: $e") }
+    }
+
+    private fun doSave(notify: Boolean) {
+        val f = sessionFile
+        if (f == null || !f.exists() || f.length() == 0L) {
+            runOnUiThread { textView.append("\n[Nie je co ulozit]") }; return
+        }
+        if (notify) notifyText("Diktat ulozeny", segments.joinToString("\n"))
+        runOnUiThread { textView.append("\n[Ulozene: ${f.name}]") }
+    }
+
+    private fun doSavePublic() {
+        try {
+            val outDir = File("/sdcard/Documents/Diktat")
+            if (!outDir.exists()) outDir.mkdirs()
+            val name = "diktat_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".txt"
+            val out = File(outDir, name)
+            out.writeText(segments.joinToString("\n"), Charsets.UTF_8)
+            runOnUiThread {
+                Toast.makeText(this, "Ulozene do Documents/Diktat", Toast.LENGTH_LONG).show()
+                textView.append("\n[Ulozene: ${out.absolutePath}]")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "save_public err: $e")
+        }
+    }
+
+    /** Menu (⋮) — dalsie akcie. */
+    private fun showMenu() {
+        val items = arrayOf("Poslat do Operitu", "Zmazat cely text", "Zmazat poslednu vlozenu",
+            "Spat (undo)", "Znova (redo)", "Ulozit TXT", "Kopirovat", "Zdielat", "Notifikacia")
+        AlertDialog.Builder(this).setTitle("Menu").setItems(items) { _, i -> when (i) {
+            0 -> sendToOperit()
+            1 -> runAction("clear")
+            2 -> doDelLast()
+            3 -> doUndo()
+            4 -> doRedo()
+            5 -> doSavePublic()
+            6 -> doCopy()
+            7 -> doShare()
+            8 -> notifyIfNeeded(force = true)
+        } }.show()
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        val ok = requestCode == REQUEST_RECORD_AUDIO_PERMISSION &&
+                grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+        if (!ok) { Log.e(TAG, "mic denied"); finish() }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        Settings.init(getExternalFilesDir(null) ?: filesDir)
+        ActivityCompat.requestPermissions(this, permissions, REQUEST_RECORD_AUDIO_PERMISSION)
+        loadConfig(); loadCommands(); loadButtons()
 
-        edit = findViewById(R.id.edit_text)
-        bigBtn = findViewById(R.id.big_button)
-        status = findViewById(R.id.status)
-        langBtn = findViewById(R.id.lang_btn)
+        textView = findViewById(R.id.my_text)
+        textView.movementMethod = ScrollingMovementMethod()
+        statusView = findViewById(R.id.status_view)
+        recordButton = findViewById(R.id.record_button)
+        recordButton.isEnabled = false
+        recordButton.setOnClickListener { toggleRecord() }
 
-        bigBtn.isEnabled = false
-        bigBtn.setOnClickListener { toggleRecord() }
-        langBtn.text = Settings.asrLang.uppercase() + " v"
-        langBtn.setOnClickListener { pickLanguage() }
-        findViewById<Button>(R.id.btn_settings).setOnClickListener {
-            startActivity(Intent(this, SettingsActivity::class.java))
-        }
         findViewById<Button>(R.id.btn_menu).setOnClickListener { showMenu() }
-        findViewById<Button>(R.id.act_send).setOnClickListener { doSend() }
-        findViewById<Button>(R.id.act_translate).setOnClickListener { doTranslate() }
-        findViewById<Button>(R.id.act_save).setOnClickListener { doSaveText() }
+        findViewById<Button>(R.id.act_send).setOnClickListener { sendToOperit() }
+        findViewById<Button>(R.id.act_clear).setOnClickListener { runAction("clear") }
+        findViewById<Button>(R.id.act_dellast).setOnClickListener { doDelLast() }
 
-        tts = TextToSpeech(this, this)
-        tts?.language = Locale("sk", "SK")
+        buttonViews.clear()
+        buttonIds.forEach { id ->
+            val v = findViewById<Button>(id)
+            buttonViews.add(v)
+            v.setOnClickListener {
+                val n = buttonIds.indexOf(id) + 1
+                val cfg = buttonActions[n]
+                if (cfg != null) runAction(cfg.action)
+            }
+        }
+        loadButtons()
 
-        status.text = "Inicializujem..."
+        textView.text = "Inicializujem modely..."
         lifecycleScope.launch(Dispatchers.IO) {
-            initVad()
-            val ok = initAsr()
+            initVadModel(); initOfflineRecognizer()
             withContext(Dispatchers.Main) {
-                bigBtn.isEnabled = true
-                status.text = if (ok) "Pripravene (${Settings.asrLang.uppercase()})" else "Chyba modelu"
+                recordButton.isEnabled = true
+                textView.text = "Pripravene.\nPravidla: ${rules.size}\nText: ${diktatDir().absolutePath}"
+                updateStatus()
             }
         }
     }
 
-    private fun pickLanguage() {
-        val langs = arrayOf("SK", "EN", "DE", "FR", "ES")
-        AlertDialog.Builder(this).setTitle("Jazyk rozpoznavania").setItems(langs) { _, i ->
-            Settings.asrLang = langs[i].lowercase(); Settings.save()
-            langBtn.text = langs[i] + " v"
-            status.text = "Nacitavam ${langs[i]}..."
-            lifecycleScope.launch(Dispatchers.IO) {
-                val ok = initAsr()
-                withContext(Dispatchers.Main) { status.text = if (ok) "Pripravene (${langs[i]})" else "Model ${langs[i]} chyba" }
-            }
-        }.show()
-    }
-
-    private fun showMenu() {
-        val items = arrayOf("Kopirovat", "Zdielat", "Notifikacia", "Citat (TTS)", "Strihat nahravku", "Ulozit TXT", "Vymazat text", "Spat")
-        AlertDialog.Builder(this).setTitle("Menu").setItems(items) { _, i -> when (i) {
-            0 -> copyText(); 1 -> shareText(); 2 -> notifyText(edit.text.toString())
-            3 -> speak(edit.text.toString()); 4 -> trimAudio(); 5 -> saveTxt(); 6 -> edit.setText(""); 7 -> doUndo()
-        } }.show()
-    }
-
-    private fun toggleRecord() { if (!recording) startRec() else stopRec() }
-
-    private fun startRec() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, perms, REQ_MIC2); return
+    private fun toggleRecord() {
+        if (!isRecording) {
+            if (!initMicrophone()) return
+            audioRecord!!.startRecording()
+            val svc = Intent(this, DiktatService::class.java)
+            if (Build.VERSION.SDK_INT >= 26) startForegroundService(svc) else startService(svc)
+            recordButton.setText(R.string.stop)
+            isRecording = true
+            segments.clear(); undoStack.clear(); redoStack.clear()
+            sessionFile = File(diktatDir(), "diktat_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".txt")
+            persist(); render(); lastNotifyAt = 0
+            if (cfgKeepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            vad.reset()
+            recordingThread = thread(true) { processSamples() }
+        } else {
+            isRecording = false
+            stopService(Intent(this, DiktatService::class.java))
+            audioRecord!!.stop(); audioRecord!!.release(); audioRecord = null
+            recordButton.setText(R.string.start)
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
-        val min = AudioRecord.getMinBufferSize(sampleRate, channel, format)
-        audioRecord = AudioRecord(audioSource, sampleRate, channel, format, min * 2)
-        audioRecord!!.startRecording()
-        if (Build.VERSION.SDK_INT >= 26) startForegroundService(Intent(this, DiktatService::class.java))
-        val ts = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        sessionFile = File(diktatDir(), "diktat_$ts.txt")
-        wavFile = File(diktatDir(), "zaznam_$ts.wav")
-        try { pcmOut = FileOutputStream(wavFile) } catch (e: Exception) {}
-        push(); vad.reset()
-        recording = true; bigBtn.text = "STOP"
-        if (Settings.keepScreenOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        Thread { loop() }.start()
-        status.text = "Nahravam..."
+        updateStatus()
     }
 
-    private fun stopRec() {
-        recording = false
-        try { stopService(Intent(this, DiktatService::class.java)) } catch (e: Exception) {}
-        audioRecord?.stop(); audioRecord?.release(); audioRecord = null
-        try { pcmOut?.close() } catch (e: Exception) {}; pcmOut = null
-        bigBtn.text = "NAHRAVAT"
-        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        status.text = "Hotovo"
+    private fun initVadModel() {
+        val config = getVadModelConfig(0)!!
+        config.sileroVadModelConfig.threshold = cfgThreshold
+        config.sileroVadModelConfig.minSilenceDuration = cfgMinSilence
+        vad = Vad(assetManager = application.assets, config = config)
     }
 
-    private fun loop() {
-        val buf = ShortArray(512)
+    private fun initMicrophone(): Boolean {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, permissions, REQUEST_RECORD_AUDIO_PERMISSION)
+            return false
+        }
+        val numBytes = AudioRecord.getMinBufferSize(sampleRateInHz, channelConfig, audioFormat)
+        audioRecord = AudioRecord(audioSource, sampleRateInHz, channelConfig, audioFormat, numBytes * 2)
+        try {
+            android.media.audiofx.NoiseSuppressor.create(audioRecord!!.audioSessionId)?.enabled = true
+            android.media.audiofx.AutomaticGainControl.create(audioRecord!!.audioSessionId)?.enabled = true
+        } catch (e: Exception) { }
+        return true
+    }
+
+    private fun processSamples() {
+        val buffer = ShortArray(512)
         val scope = CoroutineScope(Dispatchers.IO)
-        try { writeWavHeader(wavFile, 0) } catch (e: Exception) {}
-        var total = 0
-        while (recording) {
-            val n = audioRecord?.read(buf, 0, buf.size) ?: -1
-            if (n > 0) {
-                vad.acceptWaveform(FloatArray(n) { buf[it] / 32768f })
-                try {
-                    val b = ByteArray(n * 2)
-                    for (i in 0 until n) { b[i*2] = (buf[i].toInt() and 0xFF).toByte(); b[i*2+1] = ((buf[i].toInt() shr 8) and 0xFF).toByte() }
-                    pcmOut?.write(b); total += n
-                } catch (e: Exception) {}
+        var tick = 0
+        while (isRecording) {
+            val ret = audioRecord?.read(buffer, 0, buffer.size)
+            if (ret != null && ret > 0) {
+                val samples = FloatArray(ret) { buffer[it] / 32768.0f }
+                vad.acceptWaveform(samples)
                 while (!vad.empty()) {
                     val seg = vad.front()
-                    val smp = seg.samples
-                    scope.launch { val t = recognize(smp); if (t.isNotBlank()) main.post { appendText(t) } }
+                    scope.launch {
+                        val text = runSecondPass(seg.samples)
+                        if (text.isNotBlank()) applySegment(text)
+                    }
                     vad.pop()
                 }
             }
+            if (++tick % 20 == 0) { scope.launch { maybeReloadConfig() } }
         }
-        try { pcmOut?.close(); pcmOut = null; writeWavHeader(wavFile, total) } catch (e: Exception) {}
         scope.cancel()
     }
 
-    private fun writeWavHeader(f: File?, samples: Int) {
-        if (f == null) return
-        try {
-            val raf = java.io.RandomAccessFile(f, "rw"); raf.seek(0)
-            val len = samples * 2
-            val o = java.io.ByteArrayOutputStream()
-            fun l32(v: Int) { o.write(v and 0xFF); o.write((v shr 8) and 0xFF); o.write((v shr 16) and 0xFF); o.write((v shr 24) and 0xFF) }
-            fun l16(v: Int) { o.write(v and 0xFF); o.write((v shr 8) and 0xFF) }
-            o.write("RIFF".toByteArray()); l32(36 + len); o.write("WAVE".toByteArray())
-            o.write("fmt ".toByteArray()); l32(16); l16(1); l16(1); l32(sampleRate); l32(sampleRate*2); l16(2); l16(16)
-            o.write("data".toByteArray()); l32(len)
-            raf.write(o.toByteArray()); raf.close()
-        } catch (e: Exception) { Log.e(TAG2, "wav: $e") }
+    private fun initOfflineRecognizer() {
+        val config = OfflineRecognizerConfig(
+            featConfig = getFeatureConfig(sampleRate = sampleRateInHz, featureDim = 80),
+            modelConfig = getOfflineModelConfig(type = 40)!!,
+        )
+        offlineRecognizer = OfflineRecognizer(assetManager = application.assets, config = config)
     }
 
-    private fun appendText(t: String) {
-        val cur = edit.text.toString()
-        edit.setText(if (cur.isBlank()) t else cur + "\n" + t)
-        edit.setSelection(edit.text.length)
-        try { sessionFile?.writeText(edit.text.toString()) } catch (e: Exception) {}
+    private fun runSecondPass(samples: FloatArray): String {
+        val stream = offlineRecognizer.createStream()
+        stream.acceptWaveform(samples, sampleRateInHz)
+        offlineRecognizer.decode(stream)
+        val result = offlineRecognizer.getResult(stream)
+        stream.release()
+        return result.text
     }
-
-    private fun initVad() {
-        val c = getVadModelConfig(0)!!
-        c.sileroVadModelConfig.threshold = 0.5f
-        c.sileroVadModelConfig.minSilenceDuration = 0.4f
-        vad = Vad(assetManager = application.assets, config = c)
-    }
-
-    /** Priečinok s modelmi: /sdcard/Download/Speak-o-models/<jazyk>/ */
-    private fun modelsDir() = File("/sdcard/Download/Speak-o-models")
-
-    /**
-     * Nacita ASR model pre aktualny jazyk.
-     * Priorita: externy model z /sdcard/Download/Speak-o-models/<lang>/
-     *          ak nie je, pouzije zabudovany SK Parakeet (assets, typ 40).
-     */
-    private fun initAsr(): Boolean {
-        val lang = Settings.asrLang.lowercase()
-        val dir = File(modelsDir(), lang)
-        try {
-            // skusime externy model (parakeet/whisper) z priečinka
-            val cfg = buildExternalConfig(dir) ?: getOfflineModelConfig(type = 40)!!
-            recognizer = OfflineRecognizer(assetManager = application.assets, config = cfg)
-            Log.i(TAG2, "ASR loaded: ${if (dir.exists() && hasModel(dir)) dir.absolutePath else "assets SK"}")
-            return true
-        } catch (e: Exception) {
-            Log.e(TAG2, "initAsr err: $e")
-            // fallback na zabudovany SK
-            return try { recognizer = OfflineRecognizer(application.assets, getOfflineModelConfig(40)!!); true } catch (e2: Exception) { false }
-        }
-    }
-
-    private fun hasModel(d: File): Boolean {
-        if (!d.exists()) return false
-        val names = d.list()?.toList() ?: return false
-        return names.any { it.endsWith(".onnx") }
-    }
-
-    /** Vytvori OfflineModelConfig z priečinka (absolutne cesty pre Parakeet/Whisper). */
-    private fun buildExternalConfig(d: File): OfflineModelConfig? {
-        if (!hasModel(d)) return null
-        val enc = d.listFiles()?.firstOrNull { it.name.contains("encoder") && it.name.endsWith(".onnx") }
-        val dec = d.listFiles()?.firstOrNull { it.name.contains("decoder") && it.name.endsWith(".onnx") }
-        val joi = d.listFiles()?.firstOrNull { it.name.contains("joiner") && it.name.endsWith(".onnx") }
-        val tok = d.listFiles()?.firstOrNull { it.name.contains("tokens") && it.name.endsWith(".txt") }
-        if (enc == null || dec == null || tok == null) return null
-        return if (joi != null) {
-            // Parakeet / transducer
-            OfflineModelConfig(
-                transducer = OfflineTransducerModelConfig(
-                    encoder = enc.absolutePath, decoder = dec.absolutePath, joiner = joi.absolutePath),
-                tokens = tok.absolutePath, modelType = "nemo_transducer")
-        } else {
-            // Whisper
-            OfflineModelConfig(
-                whisper = OfflineWhisperModelConfig(encoder = enc.absolutePath, decoder = dec.absolutePath, language = Settings.asrLang),
-                tokens = tok.absolutePath, modelType = "whisper")
-        }
-    }
-
-    private fun recognize(s: FloatArray): String {
-        val r = recognizer ?: return ""
-        return try {
-            val st = r.createStream()
-            st.acceptWaveform(s, sampleRate); r.decode(st)
-            val res = r.getResult(st); st.release(); res.text
-        } catch (e: Exception) { "" }
-    }
-
-    private fun doSend() {
-        val t = edit.text.toString(); if (t.isBlank()) return
-        status.text = "Posielam do Operitu..."
-        Thread { val ok = ApiClient.sendToOperit(t); main.post { status.text = if (ok) "Odoslane OK" else "Chyba (Operit?)" } }.start()
-    }
-
-    private fun doTranslate() {
-        val t = edit.text.toString(); if (t.isBlank()) return
-        if (Settings.providers.isEmpty()) { toast("Pridaj API v nastaveniach"); return }
-        val p = Settings.providers.getOrNull(Settings.translateProviderIndex) ?: return
-        status.text = "Prekladam..."
-        Thread {
-            val out = ApiClient.translate(p, Settings.translateSystemPrompt + " Target language: " + Settings.translateTarget, t)
-            main.post { if (out != null) { push(); edit.setText(out); status.text = "Prelozene" } else status.text = "Preklad zlyhal" }
-        }.start()
-    }
-
-    private fun doSaveText() {
-        try {
-            val d = File("/sdcard/Documents/Speak-o"); d.mkdirs()
-            val f = File(d, "speako_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".txt")
-            f.writeText(edit.text.toString()); toast("Ulozene: ${f.name}")
-        } catch (e: Exception) { toast("Chyba") }
-    }
-    private fun saveTxt() = doSaveText()
-
-    private fun copyText() {
-        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        cm.setPrimaryClip(ClipData.newPlainText("speako", edit.text.toString())); toast("Skopirovane")
-    }
-
-    private fun shareText() {
-        val i = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, edit.text.toString()) }
-        startActivity(Intent.createChooser(i, "Zdielat"))
-    }
-
-    private fun speak(text: String) {
-        if (text.isBlank()) return
-        if (Settings.ttsMode == "android" && ttsReady) { tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "s"); return }
-        val p = Settings.providers.getOrNull(Settings.ttsProviderIndex)
-        if (p == null) { toast("Pridaj TTS poskytovatela"); return }
-        Thread {
-            val data = ApiClient.tts(p, text, Settings.ttsVoice)
-            main.post {
-                if (data != null) try {
-                    val tmp = File(cacheDir, "tts.mp3"); tmp.writeBytes(data)
-                    player?.release(); player = MediaPlayer().apply { setDataSource(tmp.path); prepare(); start() }
-                } catch (e: Exception) { toast("Prehravanie zlyhalo") } else toast("TTS zlyhalo")
-            }
-        }.start()
-    }
-
-    private fun notifyText(text: String) {
-        val nm = getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(NotificationChannel("speako", "Speak-o", NotificationManager.IMPORTANCE_HIGH))
-        @Suppress("DEPRECATION")
-        val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, "speako") else Notification.Builder(this)
-        nm.notify(1, b.setSmallIcon(R.mipmap.ic_launcher).setContentTitle("Speak-o").setStyle(Notification.BigTextStyle().bigText(text)).setContentText(text.take(120)).build())
-    }
-
-    private fun trimAudio() {
-        val src = wavFile
-        if (src == null || !src.exists()) { toast("Ziadna nahravka"); return }
-        val input = EditText(this).apply { inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL; hint = "napr. 3.5-12" }
-        AlertDialog.Builder(this).setTitle("Strihat (sekundy od-do)").setView(input)
-            .setPositiveButton("Strihnut") { _, _ ->
-                val parts = input.text.toString().split("-")
-                if (parts.size == 2) doTrim(src, parts[0].trim().toDoubleOrNull() ?: 0.0, parts[1].trim().toDoubleOrNull() ?: 0.0)
-            }.setNegativeButton("Zrusit", null).show()
-    }
-
-    private fun doTrim(src: File, from: Double, to: Double) {
-        try {
-            val bytes = src.readBytes(); val hdr = 44
-            val s = hdr + (from * sampleRate * 2).toInt(); val e = (hdr + (to * sampleRate * 2).toInt()).coerceAtMost(bytes.size)
-            if (s >= e) { toast("Zly rozsah"); return }
-            val data = bytes.copyOfRange(s.coerceAtLeast(hdr), e)
-            val out = File(diktatDir(), "ostrihane_" + System.currentTimeMillis() + ".wav")
-            FileOutputStream(out).use { it.write(ByteArray(hdr)); it.write(data) }
-            writeWavHeader(out, data.size / 2)
-            toast("Ostrihane: ${out.name}")
-        } catch (e: Exception) { toast("Strihanie zlyhalo") }
-    }
-
-    private fun push() { undo.addLast(edit.text.toString()); if (undo.size > 100) undo.removeFirst(); redo.clear() }
-    private fun doUndo() { if (undo.isEmpty()) return; redo.addLast(edit.text.toString()); edit.setText(undo.removeLast()) }
-    private fun diktatDir(): File { val d = File(getExternalFilesDir(null) ?: filesDir, "Diktat"); d.mkdirs(); return d }
-    private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
-
-    override fun onInit(status: Int) { ttsReady = status == TextToSpeech.SUCCESS }
-
-    override fun onRequestPermissionsResult(r: Int, p: Array<String>, g: IntArray) {
-        super.onRequestPermissionsResult(r, p, g)
-        if (r == REQ_MIC2 && (g.isEmpty() || g[0] != PackageManager.PERMISSION_GRANTED)) finish()
-    }
-
-    override fun onDestroy() { super.onDestroy(); tts?.shutdown(); player?.release() }
 }
