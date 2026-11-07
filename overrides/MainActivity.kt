@@ -44,7 +44,7 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
     private lateinit var langBtn: Button
 
     private lateinit var vad: Vad
-    private lateinit var offlineRecognizer: OfflineRecognizer
+    private var recognizer: OfflineRecognizer? = null
     private var audioRecord: AudioRecord? = null
 
     private val sampleRate = 16000
@@ -91,10 +91,14 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         tts = TextToSpeech(this, this)
         tts?.language = Locale("sk", "SK")
 
-        status.text = "Inicializujem modely..."
+        status.text = "Inicializujem..."
         lifecycleScope.launch(Dispatchers.IO) {
-            initVad(); initAsr()
-            withContext(Dispatchers.Main) { bigBtn.isEnabled = true; status.text = "Pripravene" }
+            initVad()
+            val ok = initAsr()
+            withContext(Dispatchers.Main) {
+                bigBtn.isEnabled = true
+                status.text = if (ok) "Pripravene (${Settings.asrLang.uppercase()})" else "Chyba modelu"
+            }
         }
     }
 
@@ -103,8 +107,11 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         AlertDialog.Builder(this).setTitle("Jazyk rozpoznavania").setItems(langs) { _, i ->
             Settings.asrLang = langs[i].lowercase(); Settings.save()
             langBtn.text = langs[i] + " v"
-            status.text = "Nacitavam ${langs[i]} model..."
-            lifecycleScope.launch(Dispatchers.IO) { initAsr(); withContext(Dispatchers.Main) { status.text = "Pripravene (${langs[i]})" } }
+            status.text = "Nacitavam ${langs[i]}..."
+            lifecycleScope.launch(Dispatchers.IO) {
+                val ok = initAsr()
+                withContext(Dispatchers.Main) { status.text = if (ok) "Pripravene (${langs[i]})" else "Model ${langs[i]} chyba" }
+            }
         }.show()
     }
 
@@ -202,18 +209,66 @@ class MainActivity : AppCompatActivity(), TextToSpeech.OnInitListener {
         vad = Vad(assetManager = application.assets, config = c)
     }
 
-    private fun initAsr() {
-        val config = OfflineRecognizerConfig(
-            featConfig = getFeatureConfig(sampleRate = sampleRate, featureDim = 80),
-            modelConfig = getOfflineModelConfig(type = 40)!!)
-        offlineRecognizer = OfflineRecognizer(assetManager = application.assets, config = config)
+    /** Priečinok s modelmi: /sdcard/Download/Speak-o-models/<jazyk>/ */
+    private fun modelsDir() = File("/sdcard/Download/Speak-o-models")
+
+    /**
+     * Nacita ASR model pre aktualny jazyk.
+     * Priorita: externy model z /sdcard/Download/Speak-o-models/<lang>/
+     *          ak nie je, pouzije zabudovany SK Parakeet (assets, typ 40).
+     */
+    private fun initAsr(): Boolean {
+        val lang = Settings.asrLang.lowercase()
+        val dir = File(modelsDir(), lang)
+        try {
+            // skusime externy model (parakeet/whisper) z priečinka
+            val cfg = buildExternalConfig(dir) ?: getOfflineModelConfig(type = 40)!!
+            recognizer = OfflineRecognizer(assetManager = application.assets, config = cfg)
+            Log.i(TAG2, "ASR loaded: ${if (dir.exists() && hasModel(dir)) dir.absolutePath else "assets SK"}")
+            return true
+        } catch (e: Exception) {
+            Log.e(TAG2, "initAsr err: $e")
+            // fallback na zabudovany SK
+            return try { recognizer = OfflineRecognizer(application.assets, getOfflineModelConfig(40)!!); true } catch (e2: Exception) { false }
+        }
     }
 
-    private fun recognize(s: FloatArray): String = try {
-        val st = offlineRecognizer.createStream()
-        st.acceptWaveform(s, sampleRate); offlineRecognizer.decode(st)
-        val r = offlineRecognizer.getResult(st); st.release(); r.text
-    } catch (e: Exception) { "" }
+    private fun hasModel(d: File): Boolean {
+        if (!d.exists()) return false
+        val names = d.list()?.toList() ?: return false
+        return names.any { it.endsWith(".onnx") }
+    }
+
+    /** Vytvori OfflineModelConfig z priečinka (absolutne cesty pre Parakeet/Whisper). */
+    private fun buildExternalConfig(d: File): OfflineModelConfig? {
+        if (!hasModel(d)) return null
+        val enc = d.listFiles()?.firstOrNull { it.name.contains("encoder") && it.name.endsWith(".onnx") }
+        val dec = d.listFiles()?.firstOrNull { it.name.contains("decoder") && it.name.endsWith(".onnx") }
+        val joi = d.listFiles()?.firstOrNull { it.name.contains("joiner") && it.name.endsWith(".onnx") }
+        val tok = d.listFiles()?.firstOrNull { it.name.contains("tokens") && it.name.endsWith(".txt") }
+        if (enc == null || dec == null || tok == null) return null
+        return if (joi != null) {
+            // Parakeet / transducer
+            OfflineModelConfig(
+                transducer = OfflineTransducerModelConfig(
+                    encoder = enc.absolutePath, decoder = dec.absolutePath, joiner = joi.absolutePath),
+                tokens = tok.absolutePath, modelType = "nemo_transducer")
+        } else {
+            // Whisper
+            OfflineModelConfig(
+                whisper = OfflineWhisperModelConfig(encoder = enc.absolutePath, decoder = dec.absolutePath, language = Settings.asrLang),
+                tokens = tok.absolutePath, modelType = "whisper")
+        }
+    }
+
+    private fun recognize(s: FloatArray): String {
+        val r = recognizer ?: return ""
+        return try {
+            val st = r.createStream()
+            st.acceptWaveform(s, sampleRate); r.decode(st)
+            val res = r.getResult(st); st.release(); res.text
+        } catch (e: Exception) { "" }
+    }
 
     private fun doSend() {
         val t = edit.text.toString(); if (t.isBlank()) return
