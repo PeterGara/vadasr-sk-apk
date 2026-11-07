@@ -53,8 +53,13 @@ jobs:
           rm -f $A/java/com/k2fsa/sherpa/onnx/ApiClient.kt
           cp -v ovr/overrides/activity_main.xml $A/res/layout/activity_main.xml
           cp -v ovr/overrides/activity_settings.xml $A/res/layout/activity_settings.xml
+          cp -v ovr/overrides/dialog_trim.xml $A/res/layout/dialog_trim.xml
+          cp -v ovr/overrides/records_row.xml $A/res/layout/records_row.xml
           cp -v ovr/overrides/spinner_item.xml $A/res/layout/spinner_item.xml
           cp -v ovr/overrides/accessibility_service_config.xml $A/res/xml/accessibility_service_config.xml
+          cp -v ovr/overrides/file_paths.xml $A/res/xml/file_paths.xml
+          mkdir -p $A/res/drawable
+          cp -v ovr/overrides/drawable/*.xml $A/res/drawable/
           cp -v ovr/overrides/AndroidManifest.xml $A/AndroidManifest.xml
           cp -v ovr/app_build.gradle src/android/SherpaOnnxVadAsr/app/build.gradle
 
