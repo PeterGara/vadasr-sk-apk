@@ -1,25 +1,51 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent">
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="14dp">
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
-            <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Nastavenia" android:textSize="22sp" android:textStyle="bold" />
-            <Button android:id="@+id/btn_back" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Spat" />
-        </LinearLayout>
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="API poskytovatelia" android:textStyle="bold" android:paddingTop="12dp" />
-        <LinearLayout android:id="@+id/providers_list" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
-        <Button android:id="@+id/btn_add" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="+ Pridat API" />
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Preklad" android:textStyle="bold" android:paddingTop="16dp" />
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Poskytovatel:" />
-        <Spinner android:id="@+id/sp_translate" android:layout_width="match_parent" android:layout_height="wrap_content" />
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Cielovy jazyk:" />
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#12141A">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="18dp">
+
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="Nastavenia" android:textColor="#FFFFFF" android:textSize="22sp" android:textStyle="bold" />
+
+        <!-- JAZYK -->
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:layout_marginTop="18dp" android:text="Jazyk rozpoznavania (prepis)" android:textColor="#8A93A6" />
+        <Spinner android:id="@+id/sp_lang" android:layout_width="match_parent" android:layout_height="wrap_content" />
+
+        <!-- PREKLAD -->
+        <Switch android:id="@+id/sw_translate" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="18dp" android:text="Zapnut preklad" android:textColor="#FFFFFF" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="Cielovy jazyk prekladu" android:textColor="#8A93A6" />
         <Spinner android:id="@+id/sp_target" android:layout_width="match_parent" android:layout_height="wrap_content" />
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="TTS (citanie)" android:textStyle="bold" android:paddingTop="16dp" />
-        <Spinner android:id="@+id/sp_tts_mode" android:layout_width="match_parent" android:layout_height="wrap_content" />
-        <Spinner android:id="@+id/sp_tts_provider" android:layout_width="match_parent" android:layout_height="wrap_content" />
-        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Operit (Poslat do chatu)" android:textStyle="bold" android:paddingTop="16dp" />
-        <EditText android:id="@+id/ed_port" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="port (8094)" android:inputType="number" />
-        <EditText android:id="@+id/ed_token" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Bearer token" />
-        <EditText android:id="@+id/ed_chat" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="chat_id" />
-        <Button android:id="@+id/btn_save_operit" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Ulozit Operit" />
+        <EditText android:id="@+id/ed_transurl" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:hint="Lokalny server URL (http://127.0.0.1:8080/v1/chat/completions)" android:textColor="#E8ECF5" android:textColorHint="#5C6478" android:inputType="textUri" />
+        <EditText android:id="@+id/ed_transmodel" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:hint="Nazov modelu (gemma)" android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
+
+        <!-- PIPANIE -->
+        <Switch android:id="@+id/sw_beep" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="18dp" android:text="Pipanie" android:textColor="#FFFFFF" />
+
+        <!-- OPERIT -->
+        <Switch android:id="@+id/sw_operit" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="18dp" android:text="Posielat do Operitu" android:textColor="#FFFFFF" />
+        <EditText android:id="@+id/ed_port" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:hint="Operit port (8094)" android:textColor="#E8ECF5" android:textColorHint="#5C6478" android:inputType="number" />
+        <EditText android:id="@+id/ed_token" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:hint="Operit token" android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
+        <EditText android:id="@+id/ed_chat" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:hint="Operit chat_id" android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
+
+        <Button android:id="@+id/btn_save" android:layout_width="match_parent" android:layout_height="54dp"
+            android:layout_marginTop="24dp" android:backgroundTint="#2E7D5B" android:text="ULOZIT" android:textColor="#FFFFFF" />
+        <Button android:id="@+id/btn_back" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Spat" />
     </LinearLayout>
 </ScrollView>
