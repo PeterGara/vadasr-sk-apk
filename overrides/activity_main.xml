@@ -33,7 +33,6 @@
                 android:id="@+id/btn_menu"
                 android:layout_width="44dp"
                 android:layout_height="44dp"
-                android:layout_marginStart="4dp"
                 android:backgroundTint="#232733"
                 android:minWidth="0dp"
                 android:padding="0dp"
@@ -73,6 +72,35 @@
             android:textColor="#E8ECF5"
             android:textColorHint="#5C6478"
             android:textSize="17sp" />
+
+        <!-- PREKLAD (skryty kym sa nezapne) -->
+        <TextView
+            android:id="@+id/translate_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="PREKLAD"
+            android:textColor="#6FA8DC"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <EditText
+            android:id="@+id/translate_text"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="4dp"
+            android:layout_weight="1"
+            android:background="#16202B"
+            android:gravity="top|start"
+            android:hint="Preklad..."
+            android:inputType="textMultiLine"
+            android:padding="14dp"
+            android:scrollbars="vertical"
+            android:textColor="#BBD7F0"
+            android:textColorHint="#40566B"
+            android:textSize="17sp"
+            android:visibility="gone" />
 
         <!-- VELKE NAHRAVANIE -->
         <Button
