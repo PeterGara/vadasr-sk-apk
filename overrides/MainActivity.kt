@@ -132,9 +132,14 @@ class MainActivity : AppCompatActivity() {
                 var n = 0
                 val tick = object : Runnable {
                     override fun run() {
-                        try { toneGen?.startTone(ToneGenerator.TONE_PROP_BEEP, 110) } catch (e: Exception) {}
+                        try { toneGen?.startTone(ToneGenerator.TONE_PROP_ACK, 200) } catch (e: Exception) {}
+                        try {
+                            val v = getSystemService(VIBRATOR_SERVICE) as android.os.Vibrator
+                            @Suppress("DEPRECATION")
+                            v.vibrate(50)
+                        } catch (e: Exception) {}
                         n++
-                        if (n < times) ui.postDelayed(this, 170)
+                        if (n < times) ui.postDelayed(this, 260)
                     }
                 }
                 ui.post(tick)
