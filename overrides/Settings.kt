@@ -4,27 +4,32 @@ import org.json.JSONObject
 import java.io.File
 
 /**
- * Nastavenia Speak-o — ukladaju sa do settings.json (bez cloud API klucov).
- * Kazdy si ich nastavi v apke (obrazovka Nastavenia), netreba editovat subory.
+ * Nastavenia Speak-o — ukladaju sa do settings.json.
+ * Vsetko sa da nastavit v apke (obrazovka Nastavenia).
  */
 object Settings {
     private var f: File? = null
 
-    // jazyk rozpoznavania
+    // jazyk rozpoznavania (prepis)
+    // "sk" = SK Parakeet (zabudovany, najpresnejsi)
+    // ine = externy model z asrDir/<lang>/
     var asrLang = "sk"
+    var asrModelDir = "/sdcard/Download/Speak-o/models/asr"
 
-    // Operit (VOLITELNE - kto nema, nechava prazdne)
+    // preklad: "mlkit" (offline, jednoduche) alebo "gguf" (vlastny model/server)
+    var translateEngine = "mlkit"
+    var translateEnabled = false
+    var translateTarget = "EN"
+    // gguf rezim
+    var translateUrl = "http://127.0.0.1:8080/v1/chat/completions"
+    var translateModel = "gemma"
+    var translatePrompt = "You are a translator. Translate the user's text. Reply ONLY with the translation."
+
+    // Operit (volitelne)
     var operitEnabled = false
     var operitPort = "8094"
     var operitToken = ""
     var operitChatId = ""
-
-    // Preklad — lokalny server (llama.cpp / OpenAI-kompatibilny). Zadarmo, offline.
-    var translateEnabled = false
-    var translateUrl = "http://127.0.0.1:8080/v1/chat/completions"
-    var translateModel = "gemma"
-    var translateTarget = "EN"
-    var translatePrompt = "You are a translator. Translate the user's text. Reply ONLY with the translation, no explanations."
 
     // pipanie
     var beep = true
@@ -41,9 +46,6 @@ object Settings {
 
     // ostatne
     var keepScreenOn = true
-    var cmdMaxWords = 4
-    var threshold = 0.5f
-    var minSilence = 0.4f
 
     fun init(dir: File) { f = File(dir, "settings.json"); load() }
 
@@ -53,15 +55,17 @@ object Settings {
         try {
             val j = JSONObject(file.readText())
             asrLang = j.optString("asrLang", asrLang)
+            asrModelDir = j.optString("asrModelDir", asrModelDir)
+            translateEngine = j.optString("translateEngine", translateEngine)
+            translateEnabled = j.optBoolean("translateEnabled", false)
+            translateTarget = j.optString("translateTarget", "EN")
+            translateUrl = j.optString("translateUrl", translateUrl)
+            translateModel = j.optString("translateModel", translateModel)
+            translatePrompt = j.optString("translatePrompt", translatePrompt)
             operitEnabled = j.optBoolean("operitEnabled", false)
             operitPort = j.optString("operitPort", operitPort)
             operitToken = j.optString("operitToken", "")
             operitChatId = j.optString("operitChatId", "")
-            translateEnabled = j.optBoolean("translateEnabled", false)
-            translateUrl = j.optString("translateUrl", translateUrl)
-            translateModel = j.optString("translateModel", translateModel)
-            translateTarget = j.optString("translateTarget", "EN")
-            translatePrompt = j.optString("translatePrompt", translatePrompt)
             beep = j.optBoolean("beep", true)
             beepVolume = j.optDouble("beepVolume", 0.8).toFloat()
             beepToneMs = j.optInt("beepToneMs", 200)
@@ -74,9 +78,6 @@ object Settings {
             beepStart = j.optInt("beepStart", 1)
             beepStop = j.optInt("beepStop", 1)
             keepScreenOn = j.optBoolean("keepScreenOn", true)
-            cmdMaxWords = j.optInt("cmdMaxWords", 4)
-            threshold = j.optDouble("threshold", 0.5).toFloat()
-            minSilence = j.optDouble("minSilence", 0.4).toFloat()
         } catch (e: Exception) { }
     }
 
@@ -85,15 +86,17 @@ object Settings {
         try {
             val j = JSONObject()
             j.put("asrLang", asrLang)
+            j.put("asrModelDir", asrModelDir)
+            j.put("translateEngine", translateEngine)
+            j.put("translateEnabled", translateEnabled)
+            j.put("translateTarget", translateTarget)
+            j.put("translateUrl", translateUrl)
+            j.put("translateModel", translateModel)
+            j.put("translatePrompt", translatePrompt)
             j.put("operitEnabled", operitEnabled)
             j.put("operitPort", operitPort)
             j.put("operitToken", operitToken)
             j.put("operitChatId", operitChatId)
-            j.put("translateEnabled", translateEnabled)
-            j.put("translateUrl", translateUrl)
-            j.put("translateModel", translateModel)
-            j.put("translateTarget", translateTarget)
-            j.put("translatePrompt", translatePrompt)
             j.put("beep", beep)
             j.put("beepVolume", beepVolume.toDouble())
             j.put("beepToneMs", beepToneMs)
@@ -106,9 +109,6 @@ object Settings {
             j.put("beepStart", beepStart)
             j.put("beepStop", beepStop)
             j.put("keepScreenOn", keepScreenOn)
-            j.put("cmdMaxWords", cmdMaxWords)
-            j.put("threshold", threshold.toDouble())
-            j.put("minSilence", minSilence.toDouble())
             file.writeText(j.toString(2))
         } catch (e: Exception) { }
     }
