@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <TextView
+        android:id="@+id/tv_range"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="0.0 s  -  0.0 s"
+        android:textColor="#E8ECF5"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_marginTop="10dp" android:text="Od" android:textColor="#8A93A6" />
+    <SeekBar android:id="@+id/seek_from" android:layout_width="match_parent" android:layout_height="wrap_content" />
+
+    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:text="Do" android:textColor="#8A93A6" />
+    <SeekBar android:id="@+id/seek_to" android:layout_width="match_parent" android:layout_height="wrap_content" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal">
+
+        <EditText android:id="@+id/ed_from" android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:background="@drawable/card" android:hint="3.5"
+            android:inputType="numberDecimal" android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
+        <EditText android:id="@+id/ed_to" android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_marginStart="8dp" android:layout_weight="1" android:background="@drawable/card" android:hint="12.0"
+            android:inputType="numberDecimal" android:textColor="#E8ECF5" android:textColorHint="#5C6478" />
+    </LinearLayout>
+
+    <Button android:id="@+id/btn_play" android:layout_width="match_parent" android:layout_height="48dp"
+        android:layout_marginTop="10dp" android:background="@drawable/btn_neutral" android:text="Prehrat"
+        android:textColor="#E8ECF5" />
+</LinearLayout>
