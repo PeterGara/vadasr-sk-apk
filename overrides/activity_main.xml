@@ -1,19 +1,60 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent">
-    <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="10dp">
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
-            <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Speak-o" android:textSize="22sp" android:textStyle="bold" />
-            <Button android:id="@+id/lang_btn" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="SK v" />
-            <Button android:id="@+id/btn_menu" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="M" />
-            <Button android:id="@+id/btn_settings" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="S" />
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".vad.asr.MainActivity">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="6dp">
+        <!-- horny riadok: nazov + menu -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+            <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:text="Diktat" android:textSize="20sp" android:textStyle="bold" />
+            <Button android:id="@+id/btn_menu" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Menu" />
         </LinearLayout>
-        <EditText android:id="@+id/edit_text" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="bottom|start" android:inputType="textMultiLine|textCapSentences" android:hint="Diktovany text..." android:textSize="17sp" android:padding="10dp" android:background="#11000000" android:scrollbars="vertical" />
-        <TextView android:id="@+id/status" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="12sp" android:paddingTop="4dp" android:paddingBottom="4dp" android:text="pripravene" />
-        <Button android:id="@+id/big_button" android:layout_width="match_parent" android:layout_height="64dp" android:text="NAHRAVAT" android:textSize="18sp" android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/my_text"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:padding="12dp"
+            android:scrollbars="vertical"
+            android:singleLine="false"
+            android:text="Pripravene"
+            android:gravity="bottom" />
+
+        <TextView android:id="@+id/status_view" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:textSize="12sp" android:textStyle="bold" android:padding="4dp" android:text="pripravene" />
+
+        <Button android:id="@+id/record_button" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="START" />
+
+        <!-- VZDY viditelne hlavne akcie -->
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
-            <Button android:id="@+id/act_send" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Poslat" />
-            <Button android:id="@+id/act_translate" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Prelozit" />
-            <Button android:id="@+id/act_save" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Ulozit" />
+            <Button android:id="@+id/act_send" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="\u2709 Posli" />
+            <Button android:id="@+id/act_dellast" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="\u232b Poslednu" />
+            <Button android:id="@+id/act_clear" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="\ud83d\uddd1 Vsetko" />
+        </LinearLayout>
+
+        <!-- 8 konfigurovatelnych tlacidiel -->
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <Button android:id="@+id/btn_1" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="B1" android:textSize="11sp" android:minHeight="42dp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_2" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="B2" android:textSize="11sp" android:minHeight="42dp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_3" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="B3" android:textSize="11sp" android:minHeight="42dp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_4" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="B4" android:textSize="11sp" android:minHeight="42dp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <Button android:id="@+id/btn_5" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="B5" android:textSize="11sp" android:minHeight="42dp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_6" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="B6" android:textSize="11sp" android:minHeight="42dp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_7" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="B7" android:textSize="11sp" android:minHeight="42dp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
+            <Button android:id="@+id/btn_8" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="B8" android:textSize="11sp" android:minHeight="42dp" android:minWidth="0dp" android:paddingLeft="2dp" android:paddingRight="2dp" />
         </LinearLayout>
     </LinearLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>
