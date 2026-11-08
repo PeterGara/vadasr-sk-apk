@@ -67,6 +67,7 @@ object Menu {
         items.add(Item("Vzhľad (farby, gradient)", "screen:theme"))
         items.add(Item("Tlačidlá (tvar, veľkosť)", "screen:buttons"))
         items.add(Item("Upraviť menu", "screen:menu"))
+        items.add(Item("Prekladač (llama, offline)", "screen:llama"))
         items.add(Item("Prepis nahrávky (súbor)", "action:transcribe_file"))
         items.add(Item("Preklad (teraz)", "action:translate"))
         items.add(Item("Orezať nahrávku", "action:trim_audio"))
