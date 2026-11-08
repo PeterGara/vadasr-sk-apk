@@ -258,6 +258,29 @@ class MainActivity : AppCompatActivity(), EngineHost {
 
             // dynamicke tlacidla
             buttonViews.forEach { it.background = Theme.rounded(Theme.neutral, 10); it.setTextColor(Theme.c(Theme.text)) }
+
+            // ostatne tlacidla
+            findViewById<android.widget.Button>(R.id.act_dellast).background = Theme.rounded(Theme.neutral, 14)
+            findViewById<android.widget.Button>(R.id.act_send).background = Theme.rounded(Theme.primary, 14)
+            findViewById<android.widget.Button>(R.id.act_clear).background = Theme.rounded(Theme.danger, 14)
+            findViewById<android.widget.Button>(R.id.act_copy).background = Theme.rounded(Theme.neutral, 14)
+            listOf(R.id.act_send, R.id.act_dellast, R.id.act_clear, R.id.act_copy).forEach {
+                findViewById<android.widget.Button>(it).setTextColor(Theme.c(Theme.text))
+            }
+            // prekladove tlacidla
+            findViewById<android.widget.Button>(R.id.btn_trans_now).background = Theme.rounded(Theme.primary, 14)
+            findViewById<android.widget.Button>(R.id.btn_trans_copy).background = Theme.rounded(Theme.neutral, 14)
+            findViewById<android.widget.Button>(R.id.btn_trans_send).background = Theme.rounded(Theme.primary, 14)
+            listOf(R.id.btn_trans_now, R.id.btn_trans_copy, R.id.btn_trans_send).forEach {
+                findViewById<android.widget.Button>(it).setTextColor(Theme.c(Theme.text))
+            }
+            // nahravky
+            findViewById<android.widget.Button>(R.id.rec_pick).background = Theme.rounded(Theme.primary, 14)
+            findViewById<android.widget.Button>(R.id.rec_refresh).background = Theme.rounded(Theme.neutral, 14)
+            // status
+            statusView.background = Theme.rounded(Theme.card, Theme.radius)
+            // nahravanie - text
+            recordButton.setTextColor(Theme.c(Theme.text))
         } catch (e: Exception) { Log.e(TAG, "applyTheme err: $e") }
     }
 
@@ -389,8 +412,8 @@ class MainActivity : AppCompatActivity(), EngineHost {
     }
 
     private fun styleModeBtn(b: Button, on: Boolean) {
-        b.setBackgroundResource(if (on) R.drawable.seg_on else R.drawable.seg_off)
-        b.setTextColor(if (on) 0xFFFFFFFF.toInt() else 0xFFC7D0DE.toInt())
+        b.background = Theme.rounded(if (on) Theme.accent else Theme.neutral, 22)
+        b.setTextColor(Theme.c(Theme.text))
         b.setTypeface(null, if (on) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
     }
 
@@ -1217,7 +1240,11 @@ class MainActivity : AppCompatActivity(), EngineHost {
         super.onResume()
         Settings.init(getExternalFilesDir(null) ?: filesDir)
         Theme.init(getExternalFilesDir(null) ?: filesDir)
+        Theme.load(); Layout.load()
+        buildDynamicButtons()
+        applyTheme()
         setMode(mode); loadCommands(); loadButtons()
+        applyTheme()
         lifecycleScope.launch(Dispatchers.IO) { initAsr() }
     }
 
