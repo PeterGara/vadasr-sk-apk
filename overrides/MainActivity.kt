@@ -110,6 +110,8 @@ class MainActivity : AppCompatActivity(), EngineHost {
     private var pcmOut: FileOutputStream? = null
     private val undoStack = ArrayDeque<String>()
 
+    @Volatile private var modelsReady = false
+    private var initRunning = false
     @Volatile private var isRecording = false
     @Volatile private var wantRecording = false
 
@@ -385,15 +387,7 @@ class MainActivity : AppCompatActivity(), EngineHost {
         startWatchdog()
 
         editText.setText("Inicializujem modely...")
-        lifecycleScope.launch(Dispatchers.IO) {
-            Log.i(TAG, "INIT 1 start")
-            try { initVadModel(); Log.i(TAG, "INIT 2 Vad OK") } catch (e: Throwable) { Log.e(TAG, "INIT Vad ERR: " + e) }
-            try { initAsr(); Log.i(TAG, "INIT 3 Asr OK") } catch (e: Throwable) { Log.e(TAG, "INIT Asr ERR: " + e) }
-            withContext(Dispatchers.Main) {
-                recordButton.isEnabled = true; editText.setText(""); updateStatus()
-                if (recognizer == null) checkModelOrOfferDownload()
-            }
-        }
+        lifecycleScope.launch(Dispatchers.IO) { initModelsOnce() }
 
         editText.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) { scheduleLiveTranslate() }
@@ -1151,6 +1145,30 @@ class MainActivity : AppCompatActivity(), EngineHost {
         }, 5000)
     }
 
+    /** Inicializuje sherpa-onnx PRESNE RAZ - nativna kniznica nie je thread-safe. */
+    @Synchronized
+    private fun initModelsOnce() {
+        if (modelsReady || initRunning) { Log.i(TAG, "initModels: uz bezi/hotovo"); return }
+        initRunning = true
+        Log.i(TAG, "initModels: START")
+        try {
+            try { initVadModel(); Log.i(TAG, "initModels: Vad OK") }
+            catch (e: Throwable) { Log.e(TAG, "initModels: Vad ERR " + e) }
+            try { initAsr(); Log.i(TAG, "initModels: Asr OK") }
+            catch (e: Throwable) { Log.e(TAG, "initModels: Asr ERR " + e) }
+            modelsReady = true
+        } finally { initRunning = false }
+        Log.i(TAG, "initModels: DONE")
+        runOnUiThread {
+            try {
+                recordButton.isEnabled = true
+                if (editText.text.toString().startsWith("Inicializujem")) editText.setText("")
+                updateStatus()
+                if (recognizer == null) checkModelOrOfferDownload()
+            } catch (e: Exception) { }
+        }
+    }
+
     private fun initVadModel() {
         val c = getVadModelConfig(0)!!
         c.sileroVadModelConfig.threshold = Settings.vadThreshold
@@ -1288,10 +1306,7 @@ class MainActivity : AppCompatActivity(), EngineHost {
         loadCommands(); loadButtons()
         Log.i(TAG, "RESUME 7 commands+buttons OK")
         applyTheme()
-        lifecycleScope.launch(Dispatchers.IO) {
-            Log.i(TAG, "RESUME-ASR start")
-            try { initAsr(); Log.i(TAG, "RESUME-ASR OK") } catch (e: Throwable) { Log.e(TAG, "RESUME-ASR ERR: " + e) }
-        }
+        if (!modelsReady) lifecycleScope.launch(Dispatchers.IO) { initModelsOnce() }
     }
 
     override fun onDestroy() {
