@@ -442,6 +442,8 @@ class MainActivity : AppCompatActivity(), EngineHost {
     private suspend fun translateText(src: String): String? =
         if (Settings.translateEngine == "mlkit")
             Translate.translateMlkit(src, Settings.asrLang, Settings.translateTarget)
+        else if (Settings.translateEngine == "gemma_box")
+            Translate.translateGemmaBox(src, Settings.asrLang, Settings.translateTarget)
         else Translate.translateGguf(src, Settings.translateTarget)
 
     private fun doTranslateNow() {
@@ -495,6 +497,7 @@ class MainActivity : AppCompatActivity(), EngineHost {
                 a == "screen:buttons" -> startActivity(Intent(this, ButtonsActivity::class.java))
                 a == "screen:menu" -> startActivity(Intent(this, MenuActivity::class.java))
                 a == "screen:llama" -> startActivity(Intent(this, LlamaActivity::class.java))
+                a == "widget" -> toggleWidget()
                 a.startsWith("action:") -> runAction(a.substringAfter("action:"))
                 a.startsWith("url:") -> {
                     startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(a.substringAfter("url:"))))
@@ -1087,6 +1090,39 @@ class MainActivity : AppCompatActivity(), EngineHost {
         }
     }
 
+    // ---------------- plavajuci widget ----------------
+    private var floating: FloatingWidget? = null
+
+    private fun toggleWidget() {
+        if (floating?.isVisible() == true) {
+            floating?.hide(); return
+        }
+        if (!android.provider.Settings.canDrawOverlays(this)) {
+            toast("Povol zobrazovanie cez ine apky v nastaveniach")
+            try {
+                startActivity(android.content.Intent(
+                    android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    android.net.Uri.parse("package:$packageName")))
+            } catch (e: Exception) { }
+            return
+        }
+        floating = FloatingWidget(this)
+        floating?.show(object : FloatingWidget.Host {
+            override fun fwToggleRecording() {
+                runOnUiThread {
+                    if (isRecording) stopRecording() else startRecording()
+                }
+            }
+            override fun fwIsRecording() = isRecording
+            override fun fwPasteToActive() {
+                runOnUiThread { runAction("paste_app") }
+            }
+            override fun fwCopyAll() {
+                runOnUiThread { runAction("copy") }
+            }
+        })
+    }
+
     // ---------------- nahravanie ----------------
     private fun toggleRecord() {
         if (!isRecording) {
@@ -1293,6 +1329,7 @@ class MainActivity : AppCompatActivity(), EngineHost {
                     scope.launch {
                         val t = runRecognizer2(seg.samples)
                         if (t.isNotBlank()) {
+                            chirp()
                             val cmd = matchVoiceCommand(t)
                             if (cmd != null) {
                                 val clean = stripCommand(t, cmd)
@@ -1323,6 +1360,20 @@ class MainActivity : AppCompatActivity(), EngineHost {
     private fun runRecognizer2(samples: FloatArray): String {
         val rec = recognizer ?: return ""
         return runRecognizer(rec, samples)
+    }
+
+    /** Tiché ťuknutie pri každom prepise vety (aj na pozadí - potvrdenie, že to ide). */
+    private fun chirp() {
+        if (!Settings.chirpOnTranscribe) return
+        try {
+            ui.post {
+                try {
+                    val g = ToneGenerator(AudioManager.STREAM_MUSIC, (Settings.chirpVolume * 100).toInt().coerceIn(1, 100))
+                    g.startTone(ToneGenerator.TONE_PROP_BEEP, 60)
+                    ui.postDelayed({ g.release() }, 250)
+                } catch (e: Exception) { }
+            }
+        } catch (e: Exception) { }
     }
 
     private fun diktatDir(): File { val d = File(getExternalFilesDir(null) ?: filesDir, "Diktat"); d.mkdirs(); return d }
