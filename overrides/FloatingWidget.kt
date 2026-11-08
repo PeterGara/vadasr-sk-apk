@@ -60,7 +60,7 @@ class FloatingWidget(private val ctx: Context) {
             background = bg
         }
 
-        fun mkBtn(label: String, fg: Int, onClick: () -> Unit): android.widget.TextView {
+        fun mkBtn(label: String, fg: Int = Color.WHITE, onClick: () -> Unit): android.widget.TextView {
             val b = android.widget.TextView(ctx)
             b.text = label
             b.setTextColor(fg)
