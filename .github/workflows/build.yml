@@ -32,46 +32,6 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Predstiahnut zavislosti do $HOME/Downloads (CMake ich tam najde)
-        shell: bash
-        run: |
-          set -e
-          mkdir -p $HOME/Downloads
-          fetch() {
-            local url="$1"; local out="$2"; local n=0
-            while [ $n -lt 10 ]; do
-              n=$((n+1))
-              echo "Pokus $n/10: $out"
-              code=$(curl -sL --retry 3 --retry-all-errors --connect-timeout 20 --max-time 240 -o "$out" -w "%{http_code}" "$url" || echo 000)
-              sz=$(stat -c%s "$out" 2>/dev/null || echo 0)
-              echo "  HTTP=$code size=$sz"
-              if [ "$code" = "200" ] && [ "$sz" -gt 10000 ]; then echo "  OK"; return 0; fi
-              sleep 8
-            done
-            echo "  ZLYHALO"; return 1
-          }
-          fetch "https://codeload.github.com/csukuangfj/kaldi-native-fbank/tar.gz/refs/tags/v1.23.0" "$HOME/Downloads/kaldi-native-fbank-1.23.0.tar.gz"
-          fetch "https://codeload.github.com/mborgerding/kissfft/tar.gz/febd4caeed32e33ad8b2e0bb5ea77542c40f18ec" "$HOME/Downloads/kissfft-febd4caeed32e33ad8b2e0bb5ea77542c40f18ec.tar.gz"
-          echo "=== Predstiahnute ==="
-          ls -lh $HOME/Downloads/
-
-      - name: Predstiahnut Gradle (retry)
-        shell: bash
-        run: |
-          set -e
-          mkdir -p $HOME/Downloads
-          n=0
-          while [ $n -lt 10 ]; do
-            n=$((n+1))
-            echo "Gradle pokus $n/10"
-            code=$(curl -sL --retry 3 --retry-all-errors --connect-timeout 20 --max-time 300 -o /tmp/gradle.zip -w "%{http_code}" "https://services.gradle.org/distributions/gradle-8.2-bin.zip" || echo 000)
-            sz=$(stat -c%s /tmp/gradle.zip 2>/dev/null || echo 0)
-            echo "  HTTP=$code size=$sz"
-            if [ "$code" = "200" ] && [ "$sz" -gt 1000000 ]; then echo "  GRADLE OK"; break; fi
-            sleep 8
-          done
-          /opt/hostedtoolcache/../../bin/true 2>/dev/null || true
-
       - name: Build native libs
         working-directory: src
         shell: bash
@@ -97,9 +57,9 @@ jobs:
           cp -v ovr/overrides/ButtonsActivity.kt $A/java/com/k2fsa/sherpa/onnx/ButtonsActivity.kt
           cp -v ovr/overrides/Menu.kt $A/java/com/k2fsa/sherpa/onnx/Menu.kt
           cp -v ovr/overrides/MenuActivity.kt $A/java/com/k2fsa/sherpa/onnx/MenuActivity.kt
-          cp -v ovr/overrides/ModelsActivity.kt $A/java/com/k2fsa/sherpa/onnx/ModelsActivity.kt
           cp -v ovr/overrides/LlamaServer.kt $A/java/com/k2fsa/sherpa/onnx/LlamaServer.kt
-          cp -v ovr/overrides/LlamaActivity.kt $A/java/com/k2fsa/sherpa/onnx/LlamaActivity.kt
+           cp -v ovr/overrides/LlamaActivity.kt $A/java/com/k2fsa/sherpa/onnx/LlamaActivity.kt
+           cp -v ovr/overrides/ModelsActivity.kt $A/java/com/k2fsa/sherpa/onnx/ModelsActivity.kt
           cp -v ovr/overrides/Engine.kt $A/java/com/k2fsa/sherpa/onnx/Engine.kt
           cp -v ovr/overrides/ThemeActivity.kt $A/java/com/k2fsa/sherpa/onnx/ThemeActivity.kt
           rm -f $A/java/com/k2fsa/sherpa/onnx/ApiClient.kt
@@ -131,13 +91,7 @@ jobs:
           cp -v build-android-arm64-v8a/install/lib/*.so android/SherpaOnnxVadAsr/app/src/main/jniLibs/arm64-v8a/
           # llama.cpp binarky - stiahni z release
           mkdir -p /tmp/llama
-          curl -SL --retry 5 --retry-delay 3 -o /tmp/llama.tar.gz \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/octet-stream" \
-            https://api.github.com/repos/PeterGara/vadasr-sk-apk/releases/assets/722597688
-          SZ=$(stat -c%s /tmp/llama.tar.gz)
-          echo "llama tar.gz: $SZ B"
-          [ "$SZ" -gt 50000000 ] || { echo "CHYBA: llama tar.gz je len $SZ B"; exit 1; }
+          curl -SL --retry 3 -o /tmp/llama.tar.gz https://github.com/PeterGara/vadasr-sk-apk/releases/download/llama-binaries-v1/llama-android.tar.gz
           tar -xzf /tmp/llama.tar.gz -C /tmp/llama
           cp -v /tmp/llama/*.so android/SherpaOnnxVadAsr/app/src/main/jniLibs/arm64-v8a/
 
