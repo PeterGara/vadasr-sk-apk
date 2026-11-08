@@ -217,6 +217,7 @@ class MainActivity : AppCompatActivity(), EngineHost {
             "start" -> startRecording()
             "trim_audio" -> pickAudioForTrim()
             "transcribe_file" -> pickAudioForTranscribe()
+            "paste_diag" -> showPasteDiag()
         }
     }
 
@@ -873,6 +874,17 @@ class MainActivity : AppCompatActivity(), EngineHost {
         nm.notify(1, b.setSmallIcon(R.mipmap.ic_launcher).setContentTitle("Speak-o").setStyle(Notification.BigTextStyle().bigText(text)).build())
     }
 
+    private fun showPasteDiag() {
+        val svc = SpeakAccessibilityService.instance
+        val txt = if (svc == null) "Accessibility sluzba NIE JE zapnuta!\n\nZapni: Nastavenia -> Zjednodusenie ovladania -> Diktat -> ZAPNUT"
+                  else svc.describeActiveWindow()
+        AlertDialog.Builder(this)
+            .setTitle("Diagnostika vkladania")
+            .setMessage(txt)
+            .setPositiveButton("Zavrieť", null)
+            .show()
+    }
+
     private fun doPasteToApp() {
         val text = txt()
         if (text.isBlank()) { beepFor("err"); return }
@@ -1179,12 +1191,11 @@ class MainActivity : AppCompatActivity(), EngineHost {
     private fun checkModelOrOfferDownload() {
         val lang = Settings.asrLang.lowercase()
         if (modelExists(lang)) return
+        val dir = File(Settings.asrModelDir, lang).absolutePath
+        val msg = "Priecinok:" + "\n" + dir + "\n\n" + "Stiahni tam: encoder*.onnx, decoder*.onnx, joiner*.onnx, tokens.txt"
         AlertDialog.Builder(this)
             .setTitle("Model pre " + lang.uppercase() + " chyba")
-            .setMessage("Priecinok:
-" + File(Settings.asrModelDir, lang).absolutePath + "
-
-Stiahni tam subory encoder*.onnx, decoder*.onnx, joiner*.onnx, tokens.txt")
+            .setMessage(msg)
             .setPositiveButton("Rozumiem", null)
             .show()
     }
