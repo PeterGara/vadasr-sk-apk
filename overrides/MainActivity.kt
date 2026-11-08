@@ -1183,8 +1183,9 @@ class MainActivity : AppCompatActivity(), EngineHost {
     private fun ensureModelInternal(lang: String): File {
         val internal = File(filesDir, "models/asr/" + lang)
         internal.mkdirs()
-        val enc = File(internal, "encoder.int8.onnx")
-        if (enc.exists() && enc.length() > 600_000_000L) return internal
+            val allPresent = listOf("encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt")
+                .all { f -> File(internal, f).let { it.exists() && it.length() > 0L } }
+            if (allPresent) return internal
 
         // zdroje: najprv app-specific external (tam ma appka pristup), potom Download
         val ext = getExternalFilesDir(null) ?: filesDir
@@ -1241,7 +1242,7 @@ class MainActivity : AppCompatActivity(), EngineHost {
                 transducer = com.k2fsa.sherpa.onnx.OfflineTransducerModelConfig(
                     encoder = enc.absolutePath, decoder = dec.absolutePath, joiner = joi.absolutePath),
                 tokens = tok.absolutePath, modelType = "nemo_transducer")
-            recognizer = OfflineRecognizer(application.assets,
+            recognizer = OfflineRecognizer(assetManager = null,
                 OfflineRecognizerConfig(featConfig = getFeatureConfig(sampleRate = sampleRateInHz, featureDim = 80), modelConfig = mc))
             Log.i(TAG, "initAsr: MODEL LOADED " + d.absolutePath)
         } catch (e: Throwable) {
