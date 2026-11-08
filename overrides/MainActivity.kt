@@ -1186,10 +1186,13 @@ class MainActivity : AppCompatActivity(), EngineHost {
         val enc = File(internal, "encoder.int8.onnx")
         if (enc.exists() && enc.length() > 600_000_000L) return internal
 
-        // zdroje: Download priecinky
+        // zdroje: najprv app-specific external (tam ma appka pristup), potom Download
+        val ext = getExternalFilesDir(null) ?: filesDir
         val sources = listOf(
+            File(ext, "models/asr/" + lang),
+            File(ext, "models/" + lang),
+            File("/sdcard/Android/data/com.k2fsa.sherpa.onnx/files/models/asr/" + lang),
             File("/sdcard/Download/Speak-o/models/asr/" + lang),
-            File("/sdcard/Download/sherpa/" + lang),
             File("/sdcard/Speak-o/models/asr/" + lang)
         )
         for (src in sources) {
