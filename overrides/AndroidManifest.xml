@@ -44,6 +44,11 @@
             android:exported="false"
             android:label="Menu" />
         <activity
+            android:name=".vad.asr.LlamaActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
+            android:exported="false"
+            android:label="Prekladac" />
+        <activity
             android:name=".vad.asr.SettingsActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
             android:exported="false"
