@@ -105,6 +105,8 @@ object Translate {
                 "\\\"max_tokens\\\":200," +
                 "\\\"chat_template_kwargs\\\":{\\\"source_lang_code\\\":\\\"$from\\\",\\\"target_lang_code\\\":\\\"$to\\\"}}\""
         return try {
+            // 0. over, ci na boxe bezi llama-server; ak nie, spust ho a pockaj na load
+            ensureBoxServer()
             // 1. initialize -> dostaneme session id
             val initBody = JSONObject()
                 .put("jsonrpc", "2.0").put("id", 1).put("method", "initialize")
@@ -126,6 +128,48 @@ object Translate {
             // 3. vytiahni prelozeny text z output
             parseShellResult(resp)
         } catch (e: Exception) { Log.e(TAG, "gemma_box err: $e"); null }
+    }
+
+    /** Ak na boxe nebezi llama-server (vyhlnul sa / reštart), spusti ho cez MCP a pockaj na load. */
+    private fun ensureBoxServer() {
+        try {
+            val initBody = JSONObject()
+                .put("jsonrpc", "2.0").put("id", 1).put("method", "initialize")
+                .put("params", JSONObject()
+                    .put("protocolVersion", "2024-11-05")
+                    .put("capabilities", JSONObject())
+                    .put("clientInfo", JSONObject().put("name", "speako").put("version", "1")))
+            val (sid, _) = mcpPost(initBody.toString(), null)
+            if (sid.isNullOrBlank()) return
+            val notif = JSONObject().put("jsonrpc", "2.0").put("method", "notifications/initialized").toString()
+            mcpPost(notif, sid)
+
+            // rychla kontrola health
+            val check = JSONObject()
+                .put("jsonrpc", "2.0").put("id", 2).put("method", "tools/call")
+                .put("params", JSONObject().put("name", "shell")
+                    .put("arguments", JSONObject().put("command", "curl -s -o /dev/null -w \"%{http_code}\" --max-time 5 http://127.0.0.1:8080/health")))
+            val (_, resp) = mcpPost(check.toString(), sid)
+            val healthy = resp.contains("200")
+            if (!healthy) {
+                Log.w(TAG, "box server nebezi - spustam")
+                val start = JSONObject()
+                    .put("jsonrpc", "2.0").put("id", 3).put("method", "tools/call")
+                    .put("params", JSONObject().put("name", "shell")
+                        .put("arguments", JSONObject().put("command",
+                            "nohup /home/user/llama/build/bin/llama-server -m /home/user/models/translategemma-4b-it-Q4_K_M.gguf --host 0.0.0.0 --port 8080 -t 4 -c 4096 > /home/user/server.log 2>&1 & echo STARTED")))
+                mcpPost(start.toString(), sid)
+                // pockaj na load modelu (~15-25 s)
+                try { Thread.sleep(20000) } catch (e: InterruptedException) { }
+                // over, ci uz ide
+                val check2 = JSONObject()
+                    .put("jsonrpc", "2.0").put("id", 4).put("method", "tools/call")
+                    .put("params", JSONObject().put("name", "shell")
+                        .put("arguments", JSONObject().put("command", "curl -s -o /dev/null -w \"%{http_code}\" --max-time 5 http://127.0.0.1:8080/health")))
+                val (_, resp2) = mcpPost(check2.toString(), sid)
+                Log.i(TAG, "box server po starte: " + (if (resp2.contains("200")) "OK" else "NEIDE"))
+            }
+        } catch (e: Exception) { Log.e(TAG, "ensureBoxServer err: $e") }
     }
 
     private fun mcpPost(body: String, sid: String?): Pair<String?, String> {
