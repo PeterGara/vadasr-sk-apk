@@ -29,6 +29,11 @@
             <meta-data android:name="android.app.lib_name" android:value="" />
         </activity>
         <activity
+            android:name=".vad.asr.ThemeActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
+            android:exported="false"
+            android:label="Vzhlad" />
+        <activity
             android:name=".vad.asr.SettingsActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
             android:exported="false"
