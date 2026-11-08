@@ -1178,6 +1178,7 @@ class MainActivity : AppCompatActivity(), EngineHost {
 
     /** Nacita ASR: SK Parakeet (assets) alebo externy model z asrModelDir/<lang>/ */
     /** Nacita ASR model z externeho priecinka. */
+    /** Nacita ASR model LEN z externeho priecinka. Ziadny assets fallback! */
     private fun initAsr() {
         Log.i(TAG, "initAsr: begin")
         try {
@@ -1188,43 +1189,25 @@ class MainActivity : AppCompatActivity(), EngineHost {
             val dec = d.listFiles()?.firstOrNull { it.name.contains("decoder") && it.name.endsWith(".onnx") }
             val joi = d.listFiles()?.firstOrNull { it.name.contains("joiner") && it.name.endsWith(".onnx") }
             val tok = d.listFiles()?.firstOrNull { it.name.contains("tokens") && it.name.endsWith(".txt") }
-            if (enc != null && dec != null && joi != null && tok != null) {
-                val mc = com.k2fsa.sherpa.onnx.OfflineModelConfig(
-                    transducer = com.k2fsa.sherpa.onnx.OfflineTransducerModelConfig(
-                        encoder = enc.absolutePath, decoder = dec.absolutePath, joiner = joi.absolutePath),
-                    tokens = tok.absolutePath, modelType = "nemo_transducer")
-                recognizer = OfflineRecognizer(application.assets,
-                    OfflineRecognizerConfig(featConfig = getFeatureConfig(sampleRate = sampleRateInHz, featureDim = 80), modelConfig = mc))
-                Log.i(TAG, "initAsr: model LOADED " + d.absolutePath)
-            } else {
-                recognizer = try {
-                    val cfg = OfflineRecognizerConfig(
-                        featConfig = getFeatureConfig(sampleRate = sampleRateInHz, featureDim = 80),
-                        modelConfig = getOfflineModelConfig(type = 40)!!)
-                    OfflineRecognizer(assetManager = application.assets, config = cfg)
-                } catch (e2: Exception) { null }
-                Log.w(TAG, "ASR model chyba v " + d.absolutePath)
+            if (enc == null || dec == null || joi == null || tok == null) {
+                // POZOR: ziadny assets fallback - model v APK uz NIE JE (5.0.0+),
+                // getOfflineModelConfig(40) by ukazoval na neexistujuce subory -> SIGSEGV
+                recognizer = null
+                Log.w(TAG, "initAsr: model NEEXISTUJE v " + d.absolutePath)
+                return
             }
-        } catch (e: Exception) { Log.e(TAG, "initAsr err: " + e) }
-    }
-
-    private fun modelExists(lang: String): Boolean {
-        val d = File(Settings.asrModelDir, lang.lowercase())
-        val enc = d.listFiles()?.any { it.name.contains("encoder") && it.name.endsWith(".onnx") } ?: false
-        val tok = d.listFiles()?.any { it.name.contains("tokens") && it.name.endsWith(".txt") } ?: false
-        return enc && tok
-    }
-
-    private fun checkModelOrOfferDownload() {
-        val lang = Settings.asrLang.lowercase()
-        if (modelExists(lang)) return
-        val dir = File(Settings.asrModelDir, lang).absolutePath
-        val msg = "Priecinok:" + "\n" + dir + "\n\n" + "Stiahni tam: encoder*.onnx, decoder*.onnx, joiner*.onnx, tokens.txt"
-        AlertDialog.Builder(this)
-            .setTitle("Model pre " + lang.uppercase() + " chyba")
-            .setMessage(msg)
-            .setPositiveButton("Rozumiem", null)
-            .show()
+            Log.i(TAG, "initAsr: subory OK, nacitavam " + enc.name)
+            val mc = com.k2fsa.sherpa.onnx.OfflineModelConfig(
+                transducer = com.k2fsa.sherpa.onnx.OfflineTransducerModelConfig(
+                    encoder = enc.absolutePath, decoder = dec.absolutePath, joiner = joi.absolutePath),
+                tokens = tok.absolutePath, modelType = "nemo_transducer")
+            recognizer = OfflineRecognizer(application.assets,
+                OfflineRecognizerConfig(featConfig = getFeatureConfig(sampleRate = sampleRateInHz, featureDim = 80), modelConfig = mc))
+            Log.i(TAG, "initAsr: MODEL LOADED " + d.absolutePath)
+        } catch (e: Throwable) {
+            Log.e(TAG, "initAsr: ERR " + e)
+            recognizer = null
+        }
     }
 
     private fun processSamples() {
