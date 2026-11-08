@@ -87,8 +87,9 @@ class FloatingWidget(private val ctx: Context) {
         }
 
         val btnRec = mkBtn("⏺") { host.fwToggleRecording() }
-        val btnPaste = mkBtn("📋") { host.fwPasteToActive() }
-        val btnCopy = mkBtn("📄") { host.fwCopyAll() }
+        val btnStop = mkBtn("⏹") { if (host.fwIsRecording()) host.fwToggleRecording() }
+        val btnPaste = mkBtn("VLOŽ") { host.fwPasteToActive() }
+        val btnCopy = mkBtn("KOPIA") { host.fwCopyAll() }
         val btnHide = mkBtn("✕") { hide() }
 
         fun expand() {
@@ -107,7 +108,7 @@ class FloatingWidget(private val ctx: Context) {
             orientation = android.widget.LinearLayout.HORIZONTAL
             addView(handle); handle.visibility = View.GONE
             addView(row.apply {
-                addView(btnRec); addView(btnPaste); addView(btnCopy); addView(btnHide)
+                addView(btnRec); addView(btnStop); addView(btnPaste); addView(btnCopy); addView(btnHide)
             })
         }
 
