@@ -386,7 +386,9 @@ class MainActivity : AppCompatActivity(), EngineHost {
 
         editText.setText("Inicializujem modely...")
         lifecycleScope.launch(Dispatchers.IO) {
-            initVadModel(); initAsr()
+            Log.i(TAG, "INIT 1 start")
+            try { initVadModel(); Log.i(TAG, "INIT 2 Vad OK") } catch (e: Throwable) { Log.e(TAG, "INIT Vad ERR: " + e) }
+            try { initAsr(); Log.i(TAG, "INIT 3 Asr OK") } catch (e: Throwable) { Log.e(TAG, "INIT Asr ERR: " + e) }
             withContext(Dispatchers.Main) {
                 recordButton.isEnabled = true; editText.setText(""); updateStatus()
                 if (recognizer == null) checkModelOrOfferDownload()
@@ -1159,6 +1161,7 @@ class MainActivity : AppCompatActivity(), EngineHost {
     /** Nacita ASR: SK Parakeet (assets) alebo externy model z asrModelDir/<lang>/ */
     /** Nacita ASR model z externeho priecinka. */
     private fun initAsr() {
+        Log.i(TAG, "initAsr: begin")
         try {
             val lang = Settings.asrLang.lowercase()
             val d = File(Settings.asrModelDir, lang)
@@ -1174,7 +1177,7 @@ class MainActivity : AppCompatActivity(), EngineHost {
                     tokens = tok.absolutePath, modelType = "nemo_transducer")
                 recognizer = OfflineRecognizer(application.assets,
                     OfflineRecognizerConfig(featConfig = getFeatureConfig(sampleRate = sampleRateInHz, featureDim = 80), modelConfig = mc))
-                Log.i(TAG, "ASR model OK: " + d.absolutePath)
+                Log.i(TAG, "initAsr: model LOADED " + d.absolutePath)
             } else {
                 recognizer = try {
                     val cfg = OfflineRecognizerConfig(
@@ -1285,7 +1288,10 @@ class MainActivity : AppCompatActivity(), EngineHost {
         loadCommands(); loadButtons()
         Log.i(TAG, "RESUME 7 commands+buttons OK")
         applyTheme()
-        lifecycleScope.launch(Dispatchers.IO) { initAsr() }
+        lifecycleScope.launch(Dispatchers.IO) {
+            Log.i(TAG, "RESUME-ASR start")
+            try { initAsr(); Log.i(TAG, "RESUME-ASR OK") } catch (e: Throwable) { Log.e(TAG, "RESUME-ASR ERR: " + e) }
+        }
     }
 
     override fun onDestroy() {
