@@ -9,7 +9,7 @@ android {
         applicationId "com.k2fsa.sherpa.onnx"
         minSdk 21
         targetSdk 33
-        versionCode 20261044
+        versionCode 20261045
         versionName "5.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
