@@ -90,7 +90,13 @@ jobs:
           cp -v build-android-arm64-v8a/install/lib/*.so android/SherpaOnnxVadAsr/app/src/main/jniLibs/arm64-v8a/
           # llama.cpp binarky - stiahni z release
           mkdir -p /tmp/llama
-          curl -SL --retry 3 -o /tmp/llama.tar.gz https://github.com/PeterGara/vadasr-sk-apk/releases/download/llama-binaries-v1/llama-android.tar.gz
+          curl -SL --retry 5 --retry-delay 3 -o /tmp/llama.tar.gz \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/octet-stream" \
+            https://api.github.com/repos/PeterGara/vadasr-sk-apk/releases/assets/722597688
+          SZ=$(stat -c%s /tmp/llama.tar.gz)
+          echo "llama tar.gz: $SZ B"
+          [ "$SZ" -gt 50000000 ] || { echo "CHYBA: llama tar.gz je len $SZ B"; exit 1; }
           tar -xzf /tmp/llama.tar.gz -C /tmp/llama
           cp -v /tmp/llama/*.so android/SherpaOnnxVadAsr/app/src/main/jniLibs/arm64-v8a/
 
