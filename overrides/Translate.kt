@@ -115,7 +115,7 @@ object Translate {
                     .put("capabilities", JSONObject())
                     .put("clientInfo", JSONObject().put("name", "speako").put("version", "1")))
             val (sid, _) = mcpPost(initBody.toString(), null)
-            if (sid.isNullOrBlank()) return null
+            if (sid.isNullOrBlank()) { Log.e(TAG, "gemma_box: neziskal som session id"); return null }
             // initialized notifikacia
             val notif = JSONObject().put("jsonrpc", "2.0").put("method", "notifications/initialized").toString()
             mcpPost(notif, sid)
@@ -126,7 +126,9 @@ object Translate {
                     .put("arguments", JSONObject().put("command", curl)))
             val (_, resp) = mcpPost(call.toString(), sid)
             // 3. vytiahni prelozeny text z output
-            parseShellResult(resp)
+            val out = parseShellResult(resp)
+            if (out == null) Log.e(TAG, "gemma_box: nepodarilo sa vytiahnut preklad z odpovede: " + resp.take(300))
+            out
         } catch (e: Exception) { Log.e(TAG, "gemma_box err: $e"); null }
     }
 
@@ -182,8 +184,19 @@ object Translate {
         if (sid != null) c.setRequestProperty("mcp-session-id", sid)
         OutputStreamWriter(c.outputStream, Charsets.UTF_8).use { it.write(body) }
         if (c.responseCode !in 200..299) { c.disconnect(); return Pair(null, "") }
-        val resp = BufferedReader(InputStreamReader(c.inputStream)).readText(); c.disconnect()
-        return Pair(c.headerFields?.get("mcp-session-id")?.firstOrNull(), resp)
+        val resp = BufferedReader(InputStreamReader(c.inputStream)).readText()
+        // Hlavičky v Jave su case-sensitive - hladame session id case-insensitive
+        var sessId: String? = null
+        try {
+            for (key in c.headerFields.keys) {
+                if (key != null && key.equals("mcp-session-id", ignoreCase = true)) {
+                    sessId = c.headerFields[key]?.firstOrNull()
+                    break
+                }
+            }
+        } catch (e: Exception) { }
+        c.disconnect()
+        return Pair(sessId, resp)
     }
 
     /** Z SSE streamu MCP vytiahne text vysledku shell prikazu. */
