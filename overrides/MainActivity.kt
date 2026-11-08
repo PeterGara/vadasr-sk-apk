@@ -1210,6 +1210,26 @@ class MainActivity : AppCompatActivity(), EngineHost {
         }
     }
 
+    private fun modelExists(lang: String): Boolean {
+        val d = File(Settings.asrModelDir, lang.lowercase())
+        val enc = d.listFiles()?.any { it.name.contains("encoder") && it.name.endsWith(".onnx") } ?: false
+        val tok = d.listFiles()?.any { it.name.contains("tokens") && it.name.endsWith(".txt") } ?: false
+        return enc && tok
+    }
+
+    private fun checkModelOrOfferDownload() {
+        val lang = Settings.asrLang.lowercase()
+        if (modelExists(lang)) return
+        val dir = File(Settings.asrModelDir, lang).absolutePath
+        val msg = "Model pre " + lang.uppercase() + " chyba.\n\nPriecinok:\n" + dir +
+            "\n\nVloz tam: encoder*.onnx, decoder*.onnx, joiner*.onnx, tokens.txt"
+        AlertDialog.Builder(this)
+            .setTitle("Model chyba")
+            .setMessage(msg)
+            .setPositiveButton("Rozumiem", null)
+            .show()
+    }
+
     private fun processSamples() {
         val buffer = ShortArray(512)
         val scope = CoroutineScope(Dispatchers.IO)
