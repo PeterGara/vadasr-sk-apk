@@ -22,7 +22,7 @@ object Settings {
     var noiseSuppress = true     // potlacenie hluku (NS)
     var agc = false              // automaticke zosilnenie
 
-    // preklad: "mlkit" (offline, jednoduche) alebo "gguf" (vlastny model/server)
+    // preklad: "mlkit" (offline, jednoduche), "gguf" (vlastny model/server) alebo "gemma_box" (TranslateGemma na boxe cez MCP)
     var translateEngine = "mlkit"  // mlkit = offline, nic netreba stahovat rucne
     var translateEnabled = true
     var translateTarget = "EN"
@@ -30,6 +30,13 @@ object Settings {
     var translateUrl = "http://127.0.0.1:8080/v1/chat/completions"
     var translateModel = "gemma"
     var translatePrompt = "You are a translator. Translate the user's text. Reply ONLY with the translation."
+    // gemma_box rezim (MCP tunel na box)
+    var boxMcpUrl = "https://mcp.box.simular.ai/mcp"
+    var boxMcpKey = "cb_3b247d9465d5653519de835eac8fc78f0b9d4f6227f95dcde7d918d50fd18d06"
+
+    // zvuk pri kazdom prepise vety na pozadi (nerusivy potvrdeni tuk)
+    var chirpOnTranscribe = true
+    var chirpVolume = 0.3f
 
     // Operit (volitelne)
     var operitEnabled = false
@@ -88,6 +95,10 @@ object Settings {
             translateUrl = j.optString("translateUrl", translateUrl)
             translateModel = j.optString("translateModel", translateModel)
             translatePrompt = j.optString("translatePrompt", translatePrompt)
+            boxMcpUrl = j.optString("boxMcpUrl", boxMcpUrl)
+            boxMcpKey = j.optString("boxMcpKey", boxMcpKey)
+            chirpOnTranscribe = j.optBoolean("chirpOnTranscribe", true)
+            chirpVolume = j.optDouble("chirpVolume", 0.3).toFloat()
             operitEnabled = j.optBoolean("operitEnabled", false)
             operitPort = j.optString("operitPort", operitPort)
             operitToken = j.optString("operitToken", "")
@@ -123,6 +134,10 @@ object Settings {
             j.put("translateUrl", translateUrl)
             j.put("translateModel", translateModel)
             j.put("translatePrompt", translatePrompt)
+            j.put("boxMcpUrl", boxMcpUrl)
+            j.put("boxMcpKey", boxMcpKey)
+            j.put("chirpOnTranscribe", chirpOnTranscribe)
+            j.put("chirpVolume", chirpVolume.toDouble())
             j.put("operitEnabled", operitEnabled)
             j.put("operitPort", operitPort)
             j.put("operitToken", operitToken)
