@@ -23,8 +23,8 @@ object Settings {
     var agc = false              // automaticke zosilnenie
 
     // preklad: "mlkit" (offline, jednoduche) alebo "gguf" (vlastny model/server)
-    var translateEngine = "mlkit"
-    var translateEnabled = false
+    var translateEngine = "mlkit"  // mlkit = offline, nic netreba stahovat rucne
+    var translateEnabled = true
     var translateTarget = "EN"
     // gguf rezim
     var translateUrl = "http://127.0.0.1:8080/v1/chat/completions"
@@ -53,7 +53,23 @@ object Settings {
     // ostatne
     var keepScreenOn = true
 
-    fun init(dir: File) { f = File(dir, "settings.json"); load() }
+    fun init(dir: File) {
+        f = File(dir, "settings.json")
+        load()
+        // ak cesta k modelom neexistuje, skus najst automaticky
+        if (asrModelDir.isBlank() || !File(asrModelDir).exists()) {
+            val kandidati = listOf(
+                "/sdcard/Download/Speak-o/models/asr",
+                "/sdcard/Speak-o/models/asr",
+                "/sdcard/Documents/Speak-o/models/asr"
+            )
+            for (k in kandidati) {
+                if (File(k).exists()) { asrModelDir = k; save(); break }
+            }
+        }
+        // ak stale nic, vytvor predvolenu
+        try { File(asrModelDir).mkdirs() } catch (e: Exception) { }
+    }
 
     private fun load() {
         val file = f ?: return
