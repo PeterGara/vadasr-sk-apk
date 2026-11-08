@@ -54,10 +54,12 @@ class SettingsActivity : AppCompatActivity() {
         edMinSilence.setText(String.format(Locale.US, "%.1f", Settings.minSilence))
         swNoise.isChecked = Settings.noiseSuppress
         swAgc.isChecked = Settings.agc
+        val swChirp = findViewById<Switch>(R.id.sw_chirp)
+        swChirp.isChecked = Settings.chirpOnTranscribe
 
-        val engines = arrayOf("ML Kit (offline, jednoduche)", "GGUF (vlastny model/server)")
+        val engines = arrayOf("ML Kit (offline, jednoduche)", "GGUF (vlastny model/server)", "Gemma box (TranslateGemma, 55 jazykov)")
         engineSp.adapter = ArrayAdapter(this, R.layout.spinner_item, engines)
-        engineSp.setSelection(if (Settings.translateEngine == "gguf") 1 else 0)
+        engineSp.setSelection(when (Settings.translateEngine) { "gguf" -> 1; "gemma_box" -> 2; else -> 0 })
 
         val targets = arrayOf("SK", "EN", "DE", "FR", "ES", "CZ", "PL", "IT")
         targetSp.adapter = ArrayAdapter(this, R.layout.spinner_item, targets)
@@ -90,7 +92,8 @@ class SettingsActivity : AppCompatActivity() {
             Settings.minSilence = edMinSilence.text.toString().toFloatOrNull() ?: 0.4f
             Settings.noiseSuppress = swNoise.isChecked
             Settings.agc = swAgc.isChecked
-            Settings.translateEngine = if (engineSp.selectedItemPosition == 1) "gguf" else "mlkit"
+            Settings.chirpOnTranscribe = swChirp.isChecked
+            Settings.translateEngine = when (engineSp.selectedItemPosition) { 1 -> "gguf"; 2 -> "gemma_box"; else -> "mlkit" }
             Settings.translateTarget = targetSp.selectedItem.toString().uppercase()
             Settings.operitEnabled = operitSw.isChecked
             Settings.operitPort = portEd.text.toString().ifBlank { "8094" }
