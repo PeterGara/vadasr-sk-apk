@@ -55,6 +55,8 @@ jobs:
           cp -v ovr/overrides/ThemeActivity.kt $A/java/com/k2fsa/sherpa/onnx/ThemeActivity.kt
           cp -v ovr/overrides/Layout.kt $A/java/com/k2fsa/sherpa/onnx/Layout.kt
           cp -v ovr/overrides/ButtonsActivity.kt $A/java/com/k2fsa/sherpa/onnx/ButtonsActivity.kt
+          cp -v ovr/overrides/Menu.kt $A/java/com/k2fsa/sherpa/onnx/Menu.kt
+          cp -v ovr/overrides/MenuActivity.kt $A/java/com/k2fsa/sherpa/onnx/MenuActivity.kt
           cp -v ovr/overrides/Engine.kt $A/java/com/k2fsa/sherpa/onnx/Engine.kt
           cp -v ovr/overrides/ThemeActivity.kt $A/java/com/k2fsa/sherpa/onnx/ThemeActivity.kt
           rm -f $A/java/com/k2fsa/sherpa/onnx/ApiClient.kt
