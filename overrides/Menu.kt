@@ -65,6 +65,7 @@ object Menu {
         items.clear()
         items.add(Item("Nastavenia", "screen:settings"))
         items.add(Item("Vzhľad (farby, gradient)", "screen:theme"))
+        items.add(Item("Modely (stiahnut, vybrat)", "screen:models"))
         items.add(Item("Tlačidlá (tvar, veľkosť)", "screen:buttons"))
         items.add(Item("Upraviť menu", "screen:menu"))
         items.add(Item("Prekladač (llama, offline)", "screen:llama"))
