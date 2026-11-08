@@ -73,6 +73,7 @@ object Engine {
             a == "share" -> { ctx.action("share"); true }
             a == "notify" -> { ctx.action("notify"); true }
             a == "paste_app" -> { ctx.action("paste_app"); true }
+            a == "paste_diag" -> { ctx.action("paste_diag"); true }
             a == "records" -> { ctx.action("records"); true }
             a == "translate" -> { ctx.action("translate"); true }
             a == "stop" -> { ctx.action("stop"); true }
