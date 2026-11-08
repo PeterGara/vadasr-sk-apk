@@ -329,6 +329,7 @@ class MainActivity : AppCompatActivity(), EngineHost {
         Settings.init(getExternalFilesDir(null) ?: filesDir)
         Theme.init(getExternalFilesDir(null) ?: filesDir)
         Layout.init(getExternalFilesDir(null) ?: filesDir)
+        Menu.init(getExternalFilesDir(null) ?: filesDir)
 
         recordButton = findViewById(R.id.record_button)
         editText = findViewById(R.id.my_text)
@@ -467,42 +468,30 @@ class MainActivity : AppCompatActivity(), EngineHost {
 
     // ---------------- menu ----------------
     private fun showMenu() {
-        val items = arrayOf(
-            "Nastavenia",
-            "Vzhlad (farby, gradient)",
-            "Tlacidla (tvar, velkost, akcia)",
-            "Prepis nahravky (audio subor)",
-            "Preklad (teraz)",
-            "Orezat nahravku",
-            "Poslat do Operitu",
-            "Zmazat vetu",
-            "Zmazat odstavec",
-            "Zmazat vsetko",
-            "Spat",
-            "Ulozit TXT",
-            "Kopirovat",
-            "Zdielat",
-            "Notifikacia",
-            "Vlozit do appky"
-        )
-        AlertDialog.Builder(this).setTitle("Menu").setItems(items) { _, i -> when (i) {
-            0 -> startActivity(Intent(this, SettingsActivity::class.java))
-            1 -> startActivity(Intent(this, ThemeActivity::class.java))
-            2 -> startActivity(Intent(this, ButtonsActivity::class.java))
-            3 -> pickAudioForTranscribe()
-            4 -> { setMode(MODE_TRANSLATE); doTranslateNow() }
-            5 -> pickAudioForTrim()
-            6 -> sendToOperit()
-            7 -> doDelVeta()
-            8 -> doDelOdstavec()
-            9 -> doClear()
-            10 -> doUndo()
-            11 -> doSavePublic()
-            12 -> doCopy()
-            13 -> doShare()
-            14 -> notifyText(txt())
-            15 -> doPasteToApp()
-        } }.show()
+        Menu.load()
+        val labels = Menu.items.map { it.text }.toTypedArray()
+        AlertDialog.Builder(this).setTitle("Menu").setItems(labels) { _, i ->
+            val it = Menu.items.getOrNull(i) ?: return@setItems
+            runMenuAction(it.action)
+        }.show()
+    }
+
+    /** Vykona akciu z menu.json */
+    private fun runMenuAction(action: String) {
+        val a = action.trim()
+        try {
+            when {
+                a == "screen:settings" -> startActivity(Intent(this, SettingsActivity::class.java))
+                a == "screen:theme" -> startActivity(Intent(this, ThemeActivity::class.java))
+                a == "screen:buttons" -> startActivity(Intent(this, ButtonsActivity::class.java))
+                a == "screen:menu" -> startActivity(Intent(this, MenuActivity::class.java))
+                a.startsWith("action:") -> runAction(a.substringAfter("action:"))
+                a.startsWith("url:") -> {
+                    startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(a.substringAfter("url:"))))
+                }
+                else -> runAction(a)
+            }
+        } catch (e: Exception) { Log.e(TAG, "menu err: " + e); toast("Akcia zlyhala: " + a) }
     }
 
     // ---------------- univerzalny prepis ----------------
