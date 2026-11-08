@@ -378,7 +378,10 @@ class MainActivity : AppCompatActivity(), EngineHost {
         editText.setText("Inicializujem modely...")
         lifecycleScope.launch(Dispatchers.IO) {
             initVadModel(); initAsr()
-            withContext(Dispatchers.Main) { recordButton.isEnabled = true; editText.setText(""); updateStatus() }
+            withContext(Dispatchers.Main) {
+                recordButton.isEnabled = true; editText.setText(""); updateStatus()
+                if (recognizer == null) checkModelOrOfferDownload()
+            }
         }
 
         editText.addTextChangedListener(object : TextWatcher {
@@ -1133,16 +1136,12 @@ class MainActivity : AppCompatActivity(), EngineHost {
     }
 
     /** Nacita ASR: SK Parakeet (assets) alebo externy model z asrModelDir/<lang>/ */
+    /** Nacita ASR model z externeho priecinka. */
     private fun initAsr() {
         try {
-            if (Settings.asrLang.lowercase() == "sk") {
-                val cfg = OfflineRecognizerConfig(
-                    featConfig = getFeatureConfig(sampleRate = sampleRateInHz, featureDim = 80),
-                    modelConfig = getOfflineModelConfig(type = 40)!!)
-                recognizer = OfflineRecognizer(assetManager = application.assets, config = cfg)
-                return
-            }
-            val d = File(Settings.asrModelDir, Settings.asrLang.lowercase())
+            val lang = Settings.asrLang.lowercase()
+            val d = File(Settings.asrModelDir, lang)
+            if (!d.exists()) d.mkdirs()
             val enc = d.listFiles()?.firstOrNull { it.name.contains("encoder") && it.name.endsWith(".onnx") }
             val dec = d.listFiles()?.firstOrNull { it.name.contains("decoder") && it.name.endsWith(".onnx") }
             val joi = d.listFiles()?.firstOrNull { it.name.contains("joiner") && it.name.endsWith(".onnx") }
@@ -1154,13 +1153,37 @@ class MainActivity : AppCompatActivity(), EngineHost {
                     tokens = tok.absolutePath, modelType = "nemo_transducer")
                 recognizer = OfflineRecognizer(application.assets,
                     OfflineRecognizerConfig(featConfig = getFeatureConfig(sampleRate = sampleRateInHz, featureDim = 80), modelConfig = mc))
+                Log.i(TAG, "ASR model OK: " + d.absolutePath)
             } else {
-                val cfg = OfflineRecognizerConfig(
-                    featConfig = getFeatureConfig(sampleRate = sampleRateInHz, featureDim = 80),
-                    modelConfig = getOfflineModelConfig(type = 40)!!)
-                recognizer = OfflineRecognizer(assetManager = application.assets, config = cfg)
+                recognizer = try {
+                    val cfg = OfflineRecognizerConfig(
+                        featConfig = getFeatureConfig(sampleRate = sampleRateInHz, featureDim = 80),
+                        modelConfig = getOfflineModelConfig(type = 40)!!)
+                    OfflineRecognizer(assetManager = application.assets, config = cfg)
+                } catch (e2: Exception) { null }
+                Log.w(TAG, "ASR model chyba v " + d.absolutePath)
             }
-        } catch (e: Exception) { Log.e(TAG, "initAsr err: $e") }
+        } catch (e: Exception) { Log.e(TAG, "initAsr err: " + e) }
+    }
+
+    private fun modelExists(lang: String): Boolean {
+        val d = File(Settings.asrModelDir, lang.lowercase())
+        val enc = d.listFiles()?.any { it.name.contains("encoder") && it.name.endsWith(".onnx") } ?: false
+        val tok = d.listFiles()?.any { it.name.contains("tokens") && it.name.endsWith(".txt") } ?: false
+        return enc && tok
+    }
+
+    private fun checkModelOrOfferDownload() {
+        val lang = Settings.asrLang.lowercase()
+        if (modelExists(lang)) return
+        AlertDialog.Builder(this)
+            .setTitle("Model pre " + lang.uppercase() + " chyba")
+            .setMessage("Priecinok:
+" + File(Settings.asrModelDir, lang).absolutePath + "
+
+Stiahni tam subory encoder*.onnx, decoder*.onnx, joiner*.onnx, tokens.txt")
+            .setPositiveButton("Rozumiem", null)
+            .show()
     }
 
     private fun processSamples() {
