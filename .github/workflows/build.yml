@@ -32,30 +32,28 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Predstiahnut zavislosti s retry
+      - name: Predstiahnut zavislosti do $HOME/Downloads (CMake ich tam najde)
         shell: bash
         run: |
           set -e
-          cd src
-          echo "=== Predstahujem FetchContent zavislosti ==="
-          fetch_retry() {
+          mkdir -p $HOME/Downloads
+          fetch() {
             local url="$1"; local out="$2"; local n=0
-            while [ $n -lt 8 ]; do
+            while [ $n -lt 10 ]; do
               n=$((n+1))
-              echo "Pokus $n/8: $url"
-              code=$(curl -sL --retry 3 --retry-all-errors --connect-timeout 20 --max-time 180 -o "$out" -w "%{http_code}" "$url" || echo "000")
+              echo "Pokus $n/10: $out"
+              code=$(curl -sL --retry 3 --retry-all-errors --connect-timeout 20 --max-time 240 -o "$out" -w "%{http_code}" "$url" || echo 000)
               sz=$(stat -c%s "$out" 2>/dev/null || echo 0)
               echo "  HTTP=$code size=$sz"
-              if [ "$code" = "200" ] && [ "$sz" -gt 1000 ]; then echo "  OK"; return 0; fi
-              sleep 10
+              if [ "$code" = "200" ] && [ "$sz" -gt 10000 ]; then echo "  OK"; return 0; fi
+              sleep 8
             done
-            echo "  ZLYHALO po 8 pokusoch"; return 1
+            echo "  ZLYHALO"; return 1
           }
-          mkdir -p /tmp/llama_deps
-          fetch_retry "https://codeload.github.com/csukuangfj/kaldi-native-fbank/tar.gz/refs/tags/v1.23.0" /tmp/llama_deps/knf.tar.gz || true
-          fetch_retry "https://codeload.github.com/mborgerding/kissfft/tar.gz/febd4caeed32e33ad8b2e0bb5ea77542c40f18ec" /tmp/llama_deps/kissfft.tar.gz || true
-          echo "=== Hotovo ==="
-          ls -lh /tmp/llama_deps/ || true
+          fetch "https://codeload.github.com/csukuangfj/kaldi-native-fbank/tar.gz/refs/tags/v1.23.0" "$HOME/Downloads/kaldi-native-fbank-1.23.0.tar.gz"
+          fetch "https://codeload.github.com/mborgerding/kissfft/tar.gz/febd4caeed32e33ad8b2e0bb5ea77542c40f18ec" "$HOME/Downloads/kissfft-febd4caeed32e33ad8b2e0bb5ea77542c40f18ec.tar.gz"
+          echo "=== Predstiahnute ==="
+          ls -lh $HOME/Downloads/
 
       - name: Build native libs
         working-directory: src
