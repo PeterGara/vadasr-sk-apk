@@ -491,6 +491,7 @@ class MainActivity : AppCompatActivity(), EngineHost {
             when {
                 a == "screen:settings" -> startActivity(Intent(this, SettingsActivity::class.java))
                 a == "screen:theme" -> startActivity(Intent(this, ThemeActivity::class.java))
+                a == "screen:models" -> startActivity(Intent(this, ModelsActivity::class.java))
                 a == "screen:buttons" -> startActivity(Intent(this, ButtonsActivity::class.java))
                 a == "screen:menu" -> startActivity(Intent(this, MenuActivity::class.java))
                 a == "screen:llama" -> startActivity(Intent(this, LlamaActivity::class.java))
@@ -1178,13 +1179,49 @@ class MainActivity : AppCompatActivity(), EngineHost {
 
     /** Nacita ASR: SK Parakeet (assets) alebo externy model z asrModelDir/<lang>/ */
     /** Nacita ASR model z externeho priecinka. */
-    /** Nacita ASR model LEN z externeho priecinka. Ziadny assets fallback! */
+    /** Skopiruje model z Download do internej pamate appky (FUSE problem). */
+    private fun ensureModelInternal(lang: String): File {
+        val internal = File(filesDir, "models/asr/" + lang)
+        internal.mkdirs()
+        val enc = File(internal, "encoder.int8.onnx")
+        if (enc.exists() && enc.length() > 600_000_000L) return internal
+
+        // zdroje: Download priecinky
+        val sources = listOf(
+            File("/sdcard/Download/Speak-o/models/asr/" + lang),
+            File("/sdcard/Download/sherpa/" + lang),
+            File("/sdcard/Speak-o/models/asr/" + lang)
+        )
+        for (src in sources) {
+            if (!src.exists()) continue
+            val files = src.listFiles() ?: continue
+            val e = files.firstOrNull { it.name.contains("encoder") && it.name.endsWith(".onnx") } ?: continue
+            val d = files.firstOrNull { it.name.contains("decoder") && it.name.endsWith(".onnx") } ?: continue
+            val j = files.firstOrNull { it.name.contains("joiner") && it.name.endsWith(".onnx") } ?: continue
+            val t = files.firstOrNull { it.name.contains("tokens") && it.name.endsWith(".txt") } ?: continue
+            Log.i(TAG, "ensureModel: kopirujem z " + src.absolutePath)
+            try {
+                e.copyTo(File(internal, "encoder.int8.onnx"), overwrite = true)
+                Log.i(TAG, "ensureModel: encoder OK")
+                d.copyTo(File(internal, "decoder.int8.onnx"), overwrite = true)
+                j.copyTo(File(internal, "joiner.int8.onnx"), overwrite = true)
+                t.copyTo(File(internal, "tokens.txt"), overwrite = true)
+                Log.i(TAG, "ensureModel: vsetko skopirovane")
+                return internal
+            } catch (ex: Exception) {
+                Log.e(TAG, "ensureModel: kopirovanie zlyhalo " + ex)
+            }
+        }
+        Log.w(TAG, "ensureModel: ziaden zdroj nenajdeny pre " + lang)
+        return internal
+    }
+
+    /** Nacita ASR model z internej pamate appky (skopiruje z Download ak treba). */
     private fun initAsr() {
         Log.i(TAG, "initAsr: begin")
         try {
             val lang = Settings.asrLang.lowercase()
-            val d = File(Settings.asrModelDir, lang)
-            if (!d.exists()) d.mkdirs()
+            val d = ensureModelInternal(lang)
             val enc = d.listFiles()?.firstOrNull { it.name.contains("encoder") && it.name.endsWith(".onnx") }
             val dec = d.listFiles()?.firstOrNull { it.name.contains("decoder") && it.name.endsWith(".onnx") }
             val joi = d.listFiles()?.firstOrNull { it.name.contains("joiner") && it.name.endsWith(".onnx") }
