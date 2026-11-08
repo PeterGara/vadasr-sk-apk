@@ -1,6 +1,10 @@
 package com.k2fsa.sherpa.onnx.vad.asr
 
 import android.util.Log
+import com.google.mlkit.nl.translate.DownloadConditions
+import com.google.mlkit.nl.translate.TranslateLanguage
+import com.google.mlkit.nl.translate.Translation
+import com.google.mlkit.nl.translate.TranslatorOptions
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONArray
 import org.json.JSONObject
@@ -30,7 +34,6 @@ object Translate {
 
     /** Pri ktory jazyk sa uklada z druheho; potrebne pre ML Kit (treba 2 jazyky). */
     suspend fun translateMlkit(text: String, fromLang: String, toLang: String): String? {
-        return translateGguf(text, toLang)  // ML Kit odstraneny - pouzivame GGUF
         return try {
             val options = TranslatorOptions.Builder()
                 .setSourceLanguage(code(fromLang))
