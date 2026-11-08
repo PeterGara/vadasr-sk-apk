@@ -421,6 +421,7 @@ class MainActivity : AppCompatActivity(), EngineHost {
     private fun showMenu() {
         val items = arrayOf(
             "Nastavenia",
+            "Vzhlad (farby, gradient)",
             "Prepis nahravky (audio subor)",
             "Preklad (teraz)",
             "Orezat nahravku",
@@ -437,19 +438,20 @@ class MainActivity : AppCompatActivity(), EngineHost {
         )
         AlertDialog.Builder(this).setTitle("Menu").setItems(items) { _, i -> when (i) {
             0 -> startActivity(Intent(this, SettingsActivity::class.java))
-            1 -> pickAudioForTranscribe()
-            2 -> { setMode(MODE_TRANSLATE); doTranslateNow() }
-            3 -> pickAudioForTrim()
-            4 -> sendToOperit()
-            5 -> doDelVeta()
-            6 -> doDelOdstavec()
-            7 -> doClear()
-            8 -> doUndo()
-            9 -> doSavePublic()
-            10 -> doCopy()
-            11 -> doShare()
-            12 -> notifyText(txt())
-            13 -> doPasteToApp()
+            1 -> startActivity(Intent(this, ThemeActivity::class.java))
+            2 -> pickAudioForTranscribe()
+            3 -> { setMode(MODE_TRANSLATE); doTranslateNow() }
+            4 -> pickAudioForTrim()
+            5 -> sendToOperit()
+            6 -> doDelVeta()
+            7 -> doDelOdstavec()
+            8 -> doClear()
+            9 -> doUndo()
+            10 -> doSavePublic()
+            11 -> doCopy()
+            12 -> doShare()
+            13 -> notifyText(txt())
+            14 -> doPasteToApp()
         } }.show()
     }
 
