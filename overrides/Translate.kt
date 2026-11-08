@@ -97,13 +97,14 @@ object Translate {
     fun translateGemmaBox(text: String, fromLang: String, toLang: String): String? {
         // pozor: text ide do shell prikazu na boxe - escapneme uvodzovky a spatne lomitka
         val esc = text.replace("\\", "\\\\").replace("\"", "\\\"").replace("`", "\\`").replace("$", "\\$")
-        val from = fromLang.lowercase()
+        val from = if (Settings.asrLang == "multi") "sk" else Settings.asrLang.lowercase()
         val to = toLang.lowercase()
+        // preklad z neznámeho zdroja: source_lang_code vynechame (TranslateGemma ho odhadne)
+        val ktArgs = if (Settings.asrLang == "multi") "\"target_lang_code\":\"$to\"" else "\"source_lang_code\":\"$from\",\"target_lang_code\":\"$to\""
         val curl = "curl -s --max-time 60 http://127.0.0.1:8080/v1/chat/completions " +
                 "-H \"Content-Type: application/json\" " +
                 "-d \"{\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"$esc\\\"}]," +
-                "\\\"max_tokens\\\":200," +
-                "\\\"chat_template_kwargs\\\":{\\\"source_lang_code\\\":\\\"$from\\\",\\\"target_lang_code\\\":\\\"$to\\\"}}\""
+                "\\\"max_tokens\\\":200,\\\"chat_template_kwargs\\\":{$ktArgs}}\""
         return try {
             // 0. over, ci na boxe bezi llama-server; ak nie, spust ho a pockaj na load
             ensureBoxServer()
