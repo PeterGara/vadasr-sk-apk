@@ -329,7 +329,6 @@ class MainActivity : AppCompatActivity(), EngineHost {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        ActivityCompat.requestPermissions(this, permissions, REQ_MIC)
         Settings.init(getExternalFilesDir(null) ?: filesDir)
         Theme.init(getExternalFilesDir(null) ?: filesDir)
         Layout.init(getExternalFilesDir(null) ?: filesDir)
