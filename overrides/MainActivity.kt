@@ -1260,8 +1260,18 @@ class MainActivity : AppCompatActivity(), EngineHost {
     private fun initAsr() {
         Log.i(TAG, "initAsr: begin")
         try {
-            val lang = Settings.asrLang.lowercase()
-            val d = ensureModelInternal(lang)
+            var lang = Settings.asrLang.lowercase()
+            var d = ensureModelInternal(lang)
+            // ak pre jazyk nie je model, skus univerzalny multi
+            val hasFiles = d.listFiles()?.let { fs ->
+                fs.any { it.name.contains("encoder") && it.name.endsWith(".onnx") } &&
+                fs.any { it.name.contains("tokens") && it.name.endsWith(".txt") }
+            } ?: false
+            if (!hasFiles && lang != "sk" && lang != "multi") {
+                Log.w(TAG, "initAsr: model pre $lang nenajdeny, skusam multi")
+                lang = "multi"
+                d = ensureModelInternal(lang)
+            }
             val enc = d.listFiles()?.firstOrNull { it.name.contains("encoder") && it.name.endsWith(".onnx") }
             val dec = d.listFiles()?.firstOrNull { it.name.contains("decoder") && it.name.endsWith(".onnx") }
             val joi = d.listFiles()?.firstOrNull { it.name.contains("joiner") && it.name.endsWith(".onnx") }
