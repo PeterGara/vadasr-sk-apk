@@ -60,6 +60,7 @@ jobs:
           cp -v ovr/overrides/LlamaServer.kt $A/java/com/k2fsa/sherpa/onnx/LlamaServer.kt
            cp -v ovr/overrides/LlamaActivity.kt $A/java/com/k2fsa/sherpa/onnx/LlamaActivity.kt
            cp -v ovr/overrides/ModelsActivity.kt $A/java/com/k2fsa/sherpa/onnx/ModelsActivity.kt
+           cp -v ovr/overrides/FloatingWidget.kt $A/java/com/k2fsa/sherpa/onnx/FloatingWidget.kt
           cp -v ovr/overrides/Engine.kt $A/java/com/k2fsa/sherpa/onnx/Engine.kt
           cp -v ovr/overrides/ThemeActivity.kt $A/java/com/k2fsa/sherpa/onnx/ThemeActivity.kt
           rm -f $A/java/com/k2fsa/sherpa/onnx/ApiClient.kt
