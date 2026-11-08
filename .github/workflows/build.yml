@@ -52,7 +52,9 @@ jobs:
           cp -v ovr/overrides/SpeakAccessibilityService.kt $A/java/com/k2fsa/sherpa/onnx/SpeakAccessibilityService.kt
           cp -v ovr/overrides/Theme.kt $A/java/com/k2fsa/sherpa/onnx/Theme.kt
           cp -v ovr/overrides/Engine.kt $A/java/com/k2fsa/sherpa/onnx/Engine.kt
+          cp -v ovr/overrides/ThemeActivity.kt $A/java/com/k2fsa/sherpa/onnx/ThemeActivity.kt
           cp -v ovr/overrides/Engine.kt $A/java/com/k2fsa/sherpa/onnx/Engine.kt
+          cp -v ovr/overrides/ThemeActivity.kt $A/java/com/k2fsa/sherpa/onnx/ThemeActivity.kt
           rm -f $A/java/com/k2fsa/sherpa/onnx/ApiClient.kt
           cp -v ovr/overrides/activity_main.xml $A/res/layout/activity_main.xml
           cp -v ovr/overrides/activity_settings.xml $A/res/layout/activity_settings.xml
