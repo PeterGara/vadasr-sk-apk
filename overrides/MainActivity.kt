@@ -492,6 +492,7 @@ class MainActivity : AppCompatActivity(), EngineHost {
                 a == "screen:theme" -> startActivity(Intent(this, ThemeActivity::class.java))
                 a == "screen:buttons" -> startActivity(Intent(this, ButtonsActivity::class.java))
                 a == "screen:menu" -> startActivity(Intent(this, MenuActivity::class.java))
+                a == "screen:llama" -> startActivity(Intent(this, LlamaActivity::class.java))
                 a.startsWith("action:") -> runAction(a.substringAfter("action:"))
                 a.startsWith("url:") -> {
                     startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(a.substringAfter("url:"))))
