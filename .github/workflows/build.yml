@@ -88,12 +88,6 @@ jobs:
         run: |
           set -e
           cp -v build-android-arm64-v8a/install/lib/*.so android/SherpaOnnxVadAsr/app/src/main/jniLibs/arm64-v8a/
-          # llama.cpp binarky - stiahni z release
-          mkdir -p /tmp/llama
-          curl -SL --retry 3 -o /tmp/llama.tar.gz https://github.com/PeterGara/vadasr-sk-apk/releases/download/llama-binaries-v1/llama-android.tar.gz
-          tar -xzf /tmp/llama.tar.gz -C /tmp/llama
-          cp -v /tmp/llama/*.so android/SherpaOnnxVadAsr/app/src/main/jniLibs/arm64-v8a/
-
       - name: Gradle assembleRelease
         working-directory: src/android/SherpaOnnxVadAsr
         shell: bash
