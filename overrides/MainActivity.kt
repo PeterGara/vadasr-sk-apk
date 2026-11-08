@@ -916,8 +916,9 @@ class MainActivity : AppCompatActivity(), EngineHost {
         "noop" -> {}
         "beep" -> beep(1)
         else -> {
-            if (action.startsWith("beep:")) beep(action.substringAfter("beep:").toIntOrNull() ?: 1)
+            if (action.startsWith("beep:")) { beep(action.substringAfter("beep:").toIntOrNull() ?: 1) }
             else if (action.startsWith("append:")) { val cur = txt(); setTxt(cur + action.substringAfter("append:")) }
+            else { /* neznama */ }
         }
     }
 
