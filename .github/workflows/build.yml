@@ -55,6 +55,23 @@ jobs:
           echo "=== Predstiahnute ==="
           ls -lh $HOME/Downloads/
 
+      - name: Predstiahnut Gradle (retry)
+        shell: bash
+        run: |
+          set -e
+          mkdir -p $HOME/Downloads
+          n=0
+          while [ $n -lt 10 ]; do
+            n=$((n+1))
+            echo "Gradle pokus $n/10"
+            code=$(curl -sL --retry 3 --retry-all-errors --connect-timeout 20 --max-time 300 -o /tmp/gradle.zip -w "%{http_code}" "https://services.gradle.org/distributions/gradle-8.2-bin.zip" || echo 000)
+            sz=$(stat -c%s /tmp/gradle.zip 2>/dev/null || echo 0)
+            echo "  HTTP=$code size=$sz"
+            if [ "$code" = "200" ] && [ "$sz" -gt 1000000 ]; then echo "  GRADLE OK"; break; fi
+            sleep 8
+          done
+          /opt/hostedtoolcache/../../bin/true 2>/dev/null || true
+
       - name: Build native libs
         working-directory: src
         shell: bash
