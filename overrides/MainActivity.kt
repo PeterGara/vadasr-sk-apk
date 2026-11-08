@@ -328,11 +328,17 @@ class MainActivity : AppCompatActivity(), EngineHost {
     // ---------------- onCreate ----------------
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.i(TAG, "STEP 1 setContentView start")
         setContentView(R.layout.activity_main)
+        Log.i(TAG, "STEP 2 setContentView OK")
         Settings.init(getExternalFilesDir(null) ?: filesDir)
+        Log.i(TAG, "STEP 3 Settings.init OK")
         Theme.init(getExternalFilesDir(null) ?: filesDir)
+        Log.i(TAG, "STEP 4 Theme.init OK")
         Layout.init(getExternalFilesDir(null) ?: filesDir)
+        Log.i(TAG, "STEP 5 Layout.init OK")
         Menu.init(getExternalFilesDir(null) ?: filesDir)
+        Log.i(TAG, "STEP 6 Menu.init OK")
 
         recordButton = findViewById(R.id.record_button)
         editText = findViewById(R.id.my_text)
@@ -1266,10 +1272,18 @@ class MainActivity : AppCompatActivity(), EngineHost {
         super.onResume()
         Settings.init(getExternalFilesDir(null) ?: filesDir)
         Theme.init(getExternalFilesDir(null) ?: filesDir)
+        Log.i(TAG, "RESUME 1 start")
         Theme.load(); Layout.load()
+        Log.i(TAG, "RESUME 2 Theme+Layout loaded")
+        Log.i(TAG, "RESUME 3 before buildDynamicButtons")
         buildDynamicButtons()
+        Log.i(TAG, "RESUME 4 buttons OK")
         applyTheme()
-        setMode(mode); loadCommands(); loadButtons()
+        Log.i(TAG, "RESUME 5 applyTheme OK")
+        setMode(mode)
+        Log.i(TAG, "RESUME 6 setMode OK")
+        loadCommands(); loadButtons()
+        Log.i(TAG, "RESUME 7 commands+buttons OK")
         applyTheme()
         lifecycleScope.launch(Dispatchers.IO) { initAsr() }
     }
