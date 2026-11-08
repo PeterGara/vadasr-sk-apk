@@ -2,6 +2,7 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="#1E212E"
     >
 
     <LinearLayout
@@ -36,6 +37,8 @@
             android:layout_marginTop="14dp" android:text="Potlačenie hluku" android:textColor="#FFFFFF" />
         <Switch android:id="@+id/sw_agc" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:text="Zosilnenie hlasu (AGC)" android:textColor="#FFFFFF" />
+        <Switch android:id="@+id/sw_chirp" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Zvuk pri prepise vety (tiché ťuk)" android:textColor="#FFFFFF" />
 
         <!-- PREKLAD -->
         <Switch android:id="@+id/sw_translate" android:layout_width="match_parent" android:layout_height="wrap_content"
