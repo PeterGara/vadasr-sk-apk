@@ -122,35 +122,59 @@ class MainActivity : AppCompatActivity(), EngineHost {
     private val buttonViews = ArrayList<Button>()
     private val recordFiles = ArrayList<File>()
 
-    // ---------------- dynamicke tlacidla (lubovolny pocet z buttons.txt) ----------------
+    // ---------------- dynamicke tlacidla z layout.json ----------------
     private fun buildDynamicButtons() {
-        val row1 = findViewById<android.widget.LinearLayout>(R.id.btn_row1)
-        val row2 = findViewById<android.widget.LinearLayout>(R.id.btn_row2)
-        row1.removeAllViews(); row2.removeAllViews()
-        buttonViews.clear()
+        try {
+            val container = findViewById<android.widget.LinearLayout>(R.id.btn_row1)
+            container.removeAllViews()
+            val row1 = findViewById<android.widget.LinearLayout>(R.id.btn_row2)
+            row1.removeAllViews()
+            buttonViews.clear()
+            // schovame obe povodne riadky, vytvorime vlastny kontajner
+            container.visibility = View.VISIBLE
+            row1.visibility = View.GONE
 
-        val defs = parseButtons()
-        // rozdel do 2 riadkov po 4
-        var idx = 0
-        for (d in defs) {
-            val row = if (idx < 4) row1 else row2
-            val b = android.widget.Button(this)
-            val lp = android.widget.LinearLayout.LayoutParams(0, dp(44), 1f)
-            if ((idx % 4) != 0) lp.marginStart = dp(4)
-            b.layoutParams = lp
-            b.text = d.first
-            b.textSize = 11f
-            b.isAllCaps = false
-            b.minWidth = 0
-            b.setPadding(dp(2), 0, dp(2), 0)
-            b.background = Theme.rounded(Theme.neutral, 10)
-            b.setTextColor(Theme.c(Theme.text))
-            b.setOnClickListener { runAction(d.second) }
-            row.addView(b)
-            buttonViews.add(b)
-            idx++
+            var currentRow: android.widget.LinearLayout? = null
+            var used = 0
+            for (b in Layout.buttons) {
+                if (currentRow == null || used + b.w > 4) {
+                    val nr = android.widget.LinearLayout(this)
+                    nr.orientation = android.widget.LinearLayout.HORIZONTAL
+                    nr.layoutParams = android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT)
+                    nr.setPadding(0, dp(3), 0, 0)
+                    container.addView(nr)
+                    currentRow = nr
+                    used = 0
+                }
+                val btn = android.widget.Button(this)
+                btn.text = b.text
+                btn.isAllCaps = false
+                btn.textSize = b.textSize.toFloat()
+                btn.minWidth = 0
+                btn.setPadding(dp(2), 0, dp(2), 0)
+                val lp = android.widget.LinearLayout.LayoutParams(0, dp(b.h), b.w.toFloat())
+                lp.marginStart = dp(3)
+                btn.layoutParams = lp
+                btn.background = shapeDrawable(b.shape, b.color)
+                btn.setTextColor(Theme.c(b.textColor))
+                btn.setOnClickListener { runAction(b.action) }
+                currentRow?.addView(btn)
+                buttonViews.add(btn)
+                used += b.w
+            }
+        } catch (e: Exception) { Log.e(TAG, "buildDynamicButtons err: " + e) }
+    }
+
+    private fun shapeDrawable(shape: String, color: String): android.graphics.drawable.GradientDrawable {
+        val c = try { android.graphics.Color.parseColor(color) } catch (e: Exception) { android.graphics.Color.DKGRAY }
+        return when (shape) {
+            "circle" -> android.graphics.drawable.GradientDrawable().apply { this.shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(c) }
+            "pill" -> android.graphics.drawable.GradientDrawable().apply { cornerRadius = 500f; setColor(c) }
+            "square" -> android.graphics.drawable.GradientDrawable().apply { cornerRadius = 0f; setColor(c) }
+            else -> android.graphics.drawable.GradientDrawable().apply { cornerRadius = 10 * resources.displayMetrics.density; setColor(c) }
         }
-        // ak je viac ako 8, dalsie sa ignoruju (2 riadky) - da sa rozsirit
     }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
@@ -281,6 +305,7 @@ class MainActivity : AppCompatActivity(), EngineHost {
         ActivityCompat.requestPermissions(this, permissions, REQ_MIC)
         Settings.init(getExternalFilesDir(null) ?: filesDir)
         Theme.init(getExternalFilesDir(null) ?: filesDir)
+        Layout.init(getExternalFilesDir(null) ?: filesDir)
 
         recordButton = findViewById(R.id.record_button)
         editText = findViewById(R.id.my_text)
@@ -422,6 +447,7 @@ class MainActivity : AppCompatActivity(), EngineHost {
         val items = arrayOf(
             "Nastavenia",
             "Vzhlad (farby, gradient)",
+            "Tlacidla (tvar, velkost, akcia)",
             "Prepis nahravky (audio subor)",
             "Preklad (teraz)",
             "Orezat nahravku",
@@ -439,19 +465,20 @@ class MainActivity : AppCompatActivity(), EngineHost {
         AlertDialog.Builder(this).setTitle("Menu").setItems(items) { _, i -> when (i) {
             0 -> startActivity(Intent(this, SettingsActivity::class.java))
             1 -> startActivity(Intent(this, ThemeActivity::class.java))
-            2 -> pickAudioForTranscribe()
-            3 -> { setMode(MODE_TRANSLATE); doTranslateNow() }
-            4 -> pickAudioForTrim()
-            5 -> sendToOperit()
-            6 -> doDelVeta()
-            7 -> doDelOdstavec()
-            8 -> doClear()
-            9 -> doUndo()
-            10 -> doSavePublic()
-            11 -> doCopy()
-            12 -> doShare()
-            13 -> notifyText(txt())
-            14 -> doPasteToApp()
+            2 -> startActivity(Intent(this, ButtonsActivity::class.java))
+            3 -> pickAudioForTranscribe()
+            4 -> { setMode(MODE_TRANSLATE); doTranslateNow() }
+            5 -> pickAudioForTrim()
+            6 -> sendToOperit()
+            7 -> doDelVeta()
+            8 -> doDelOdstavec()
+            9 -> doClear()
+            10 -> doUndo()
+            11 -> doSavePublic()
+            12 -> doCopy()
+            13 -> doShare()
+            14 -> notifyText(txt())
+            15 -> doPasteToApp()
         } }.show()
     }
 
