@@ -223,9 +223,12 @@ class MainActivity : AppCompatActivity(), EngineHost {
     // ---------------- vzhľad z theme.txt (bez buildu) ----------------
     private fun applyTheme() {
         try {
-            window.decorView.background = Theme.background()
-            val root = findViewById<View>(android.R.id.content)
-            root.setBackgroundDrawable(Theme.background())
+            // pozadie na skutocny root (ConstraintLayout v activity_main), nie android.R.id.content
+            val contentView = findViewById<android.view.ViewGroup>(android.R.id.content)
+            for (i in 0 until contentView.childCount) {
+                contentView.getChildAt(i).setBackgroundDrawable(Theme.background())
+            }
+            window.decorView.setBackgroundDrawable(Theme.background())
 
             statusView.setTextColor(Theme.c(Theme.textDim))
             editText.setTextColor(Theme.c(Theme.text))
