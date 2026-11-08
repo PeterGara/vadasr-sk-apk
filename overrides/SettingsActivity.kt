@@ -34,8 +34,8 @@ class SettingsActivity : AppCompatActivity() {
         val modelEd = findViewById<EditText>(R.id.ed_transmodel)
         val beepSw = findViewById<Switch>(R.id.sw_beep)
 
-        val langs = arrayOf("SK (Parakeet - najpresnejsi)", "EN", "DE", "FR", "ES", "CZ", "PL", "IT")
-        val langVals = arrayOf("sk", "en", "de", "fr", "es", "cz", "pl", "it")
+        val langs = arrayOf("SK (Parakeet - najpresnejsi)", "Univerzálny (EN/DE/ES/FR + 20)", "EN", "DE", "FR", "ES", "CZ", "PL", "IT")
+        val langVals = arrayOf("sk", "multi", "en", "de", "fr", "es", "cz", "pl", "it")
         langSp.adapter = ArrayAdapter(this, R.layout.spinner_item, langs)
         langSp.setSelection(langVals.indexOf(Settings.asrLang).coerceAtLeast(0))
 
