@@ -1,7 +1,6 @@
 package com.k2fsa.sherpa.onnx.vad.asr
 
 import android.util.Log
-import com.google.mlkit.nl.translate.DownloadConditions
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.TranslatorOptions
@@ -41,9 +40,8 @@ object Translate {
                 .build()
             val translator = Translation.getClient(options)
             // stiahni model (ak nie je)
-            val cond = DownloadConditions.Builder().build()
             val downloaded = suspendCancellableCoroutine<Boolean> { cont ->
-                translator.downloadModelIfNeeded(cond)
+                translator.downloadModelIfNeeded()
                     .addOnSuccessListener { cont.resume(true) }
                     .addOnFailureListener { cont.resume(false) }
             }
@@ -67,7 +65,7 @@ object Translate {
                 .build()
             val t = Translation.getClient(options)
             val ok = suspendCancellableCoroutine<Boolean> { cont ->
-                t.downloadModelIfNeeded(DownloadConditions.Builder().build())
+                t.downloadModelIfNeeded()
                     .addOnSuccessListener { cont.resume(true) }
                     .addOnFailureListener { cont.resume(false) }
             }
