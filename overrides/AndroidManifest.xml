@@ -34,6 +34,11 @@
             android:exported="false"
             android:label="Vzhlad" />
         <activity
+            android:name=".vad.asr.ButtonsActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
+            android:exported="false"
+            android:label="Tlacidla" />
+        <activity
             android:name=".vad.asr.SettingsActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
             android:exported="false"
