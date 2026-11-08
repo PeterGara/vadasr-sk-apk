@@ -13,7 +13,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
     steps:
       - name: Checkout sherpa-onnx
         uses: actions/checkout@v4
@@ -72,21 +72,13 @@ jobs:
           cp -v ovr/overrides/AndroidManifest.xml $A/AndroidManifest.xml
           cp -v ovr/app_build.gradle src/android/SherpaOnnxVadAsr/app/build.gradle
 
-      - name: Insert SK Parakeet model into assets
+      - name: Stiahnut Silero VAD do assets
         working-directory: src
         shell: bash
         run: |
           set -e
           A=$PWD/android/SherpaOnnxVadAsr/app/src/main/assets
-          D=$A/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8
-          mkdir -p $D
-          BASE=https://huggingface.co/vibeide-dev/parakeet-tdt-0.6b-v3-sk-sherpa-onnx-int8/resolve/main
-          for f in encoder.int8.onnx decoder.int8.onnx joiner.int8.onnx tokens.txt; do
-            curl -SL --retry 3 -o $D/$f $BASE/$f
-          done
           curl -SL --retry 3 -o $A/silero_vad.onnx https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx
-          SZ=$(stat -c%s $D/encoder.int8.onnx)
-          [ "$SZ" -gt 650000000 ] || { echo "CHYBA encoder $SZ"; exit 1; }
 
       - name: Copy native libs to jniLibs
         working-directory: src
