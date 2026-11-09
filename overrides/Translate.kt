@@ -28,6 +28,20 @@ object Translate {
         "CZ", "CS" -> TranslateLanguage.CZECH
         "PL" -> TranslateLanguage.POLISH
         "IT" -> TranslateLanguage.ITALIAN
+        "ZH" -> TranslateLanguage.CHINESE
+        "JA" -> TranslateLanguage.JAPANESE
+        "KO" -> TranslateLanguage.KOREAN
+        "TR" -> TranslateLanguage.TURKISH
+        "RU" -> TranslateLanguage.RUSSIAN
+        "AR" -> TranslateLanguage.ARABIC
+        "VI" -> TranslateLanguage.VIETNAMESE
+        "PT" -> TranslateLanguage.PORTUGUESE
+        "NL" -> TranslateLanguage.DUTCH
+        "SV" -> TranslateLanguage.SWEDISH
+        "EL" -> TranslateLanguage.GREEK
+        "UK" -> TranslateLanguage.UKRAINIAN
+        "RO" -> TranslateLanguage.ROMANIAN
+        "HU" -> TranslateLanguage.HUNGARIAN
         else -> TranslateLanguage.ENGLISH
     }
 
