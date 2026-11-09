@@ -37,6 +37,7 @@ object Settings {
     // zvuk pri kazdom prepise vety na pozadi (nerusivy potvrdeni tuk)
     var chirpOnTranscribe = true
     var chirpVolume = 0.3f
+    var debugMode = false
 
     // Operit (volitelne)
     var operitEnabled = false
@@ -99,6 +100,7 @@ object Settings {
             boxMcpKey = j.optString("boxMcpKey", boxMcpKey)
             chirpOnTranscribe = j.optBoolean("chirpOnTranscribe", true)
             chirpVolume = j.optDouble("chirpVolume", 0.3).toFloat()
+            debugMode = j.optBoolean("debugMode", false)
             operitEnabled = j.optBoolean("operitEnabled", false)
             operitPort = j.optString("operitPort", operitPort)
             operitToken = j.optString("operitToken", "")
