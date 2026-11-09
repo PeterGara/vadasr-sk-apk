@@ -200,8 +200,9 @@ object Translate {
         return Pair(sessId, resp)
     }
 
-    /** Z SSE streamu MCP vytiahne text vysledku shell prikazu. */
+    /** Z SSE/JSON streamu MCP vytiahne text vysledku shell prikazu -> preklad. */
     private fun parseShellResult(sse: String): String? {
+        var shellText: String? = null
         for (line in sse.split("\n")) {
             var l = line.trim()
             if (l.startsWith("data:")) l = l.substring(5).trim()
@@ -212,22 +213,55 @@ object Translate {
                 for (i in 0 until content.length()) {
                     val cItem = content.getJSONObject(i)
                     if (cItem.optString("type") == "text") {
-                        val t = cItem.optString("text")
-                        // hladame content pole v JSON odpovedi od llama-servera
-                        val contentStart = t.indexOf("\"content\":\"")
-                        if (contentStart >= 0) {
-                            val rest = t.substring(contentStart + 11)
-                            val end = rest.indexOf("\",")
-                            if (end > 0) return unescapeJson(rest.substring(0, end))
-                        }
+                        shellText = cItem.optString("text")
+                        break
                     }
                 }
+                if (shellText != null) break
             } catch (e: Exception) { }
         }
-        return null
+        if (shellText.isNullOrBlank()) return null
+        val t = shellText.trim()
+        // shellText je vystup z curl -> JSON od llama-servera. Skus zparsovat poriadne.
+        try {
+            val j = JSONObject(t)
+            return j.getJSONArray("choices").getJSONObject(0)
+                .getJSONObject("message").getString("content").trim()
+        } catch (e: Exception) {
+            // nie je to cisty JSON - skus najst "content":"..." robustne
+            return extractContentField(t)
+        }
     }
 
-    private fun unescapeJson(s: String): String {
-        return s.replace("\\\\", "\\").replace("\\\"", "\"").replace("\\n", "\n").replace("\\u0027", "'")
+    /** Fallback: vytiahne hodnotu "content":"..." z lubovolneho textu (escapovane aj nie). */
+    private fun extractContentField(s: String): String? {
+        val key = "\"content\":\""
+        var idx = s.indexOf(key)
+        if (idx < 0) return null
+        idx += key.length
+        val sb = StringBuilder()
+        var i = idx
+        while (i < s.length) {
+            val c = s[i]
+            if (c == '\\' && i + 1 < s.length) {
+                val n = s[i + 1]
+                when (n) {
+                    'n' -> sb.append('\n')
+                    't' -> sb.append('\t')
+                    'r' -> sb.append('\r')
+                    '"' -> sb.append('"')
+                    '\\' -> sb.append('\\')
+                    '/' -> sb.append('/')
+                    else -> sb.append(n)
+                }
+                i += 2
+                continue
+            }
+            if (c == '"') break  // koniec hodnoty
+            sb.append(c)
+            i++
+        }
+        val out = sb.toString().trim()
+        return if (out.isEmpty()) null else out
     }
 }
