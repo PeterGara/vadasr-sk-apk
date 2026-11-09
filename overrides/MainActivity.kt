@@ -757,9 +757,10 @@ class MainActivity : AppCompatActivity(), EngineHost {
             stopPlayer()
             player = MediaPlayer().apply {
                 setDataSource(f.absolutePath)
-                setOnCompletionListener { stopPlayer() }
+                setOnCompletionListener { stopPlayer(); statusView.text = "" }
                 prepare(); start()
             }
+            statusView.text = "Prehrávam... (ťukni na záznam pre zastavenie)"
             toast("Prehravam...")
         } catch (e: Exception) { Log.e(TAG, "playWhole err: $e"); toast("Prehranie zlyhalo") }
     }
@@ -783,7 +784,7 @@ class MainActivity : AppCompatActivity(), EngineHost {
     }
 
     private fun showRecordActions(f: File) {
-        val items = arrayOf("Prehrat", "Prepisat", "Orezat", "Zdielat", "Zmazat")
+        val items = arrayOf("Prehrat", "Prepisat", "Orezat", "Zdielat", "Zmazat", "Vymazat viac...", "Zastavit prehravanie")
         AlertDialog.Builder(this).setTitle(f.name).setItems(items) { _, i -> when (i) {
             0 -> playWhole(f)
             1 -> transcribePickedFile(f)
@@ -792,7 +793,25 @@ class MainActivity : AppCompatActivity(), EngineHost {
             4 -> {
                 f.delete(); loadRecords(); toast("Zmazane")
             }
+            5 -> showMultiDelete()
+            6 -> { stopPlayer(); statusView.text = ""; toast("Prehravanie zastavene") }
         } }.show()
+    }
+
+    private fun showMultiDelete() {
+        val items = recordFiles.map { it.name }.toTypedArray()
+        val checked = BooleanArray(items.size)
+        AlertDialog.Builder(this)
+            .setTitle("Vymazat nahravky (viac naraz)")
+            .setMultiChoiceItems(items, checked) { _, pos, isChecked -> checked[pos] = isChecked }
+            .setPositiveButton("Vymazat") { _, _ ->
+                var n = 0
+                for (i in checked.indices) if (checked[i]) { recordFiles[i].delete(); n++ }
+                loadRecords()
+                toast(if (n > 0) "Zmazane $n nahravok" else "Nic nezmazane")
+            }
+            .setNegativeButton("Zrusit", null)
+            .show()
     }
 
     private fun transcribePickedFile(f: File) {
