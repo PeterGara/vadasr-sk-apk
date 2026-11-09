@@ -439,22 +439,27 @@ class MainActivity : AppCompatActivity(), EngineHost {
         }
     }
 
-    private suspend fun translateText(src: String): String? =
-        if (Settings.translateEngine == "mlkit")
+    private suspend fun translateText(src: String): String? {
+        Log.i("SpeakO-tr", "translateText: src=[${src.take(80)}] engine=${Settings.translateEngine} target=${Settings.translateTarget}")
+        val out = if (Settings.translateEngine == "mlkit")
             Translate.translateMlkit(src, Settings.asrLang, Settings.translateTarget)
         else if (Settings.translateEngine == "gemma_box")
             Translate.translateGemmaBox(src, Settings.asrLang, Settings.translateTarget)
         else Translate.translateGguf(src, Settings.translateTarget)
+        Log.i("SpeakO-tr", "translateText: vysledok=[${out?.take(80) ?: "NULL"}]")
+        return out
+    }
 
     private fun doTranslateNow() {
         val src = editText.text.toString()
+        Log.i("SpeakO-tr", "doTranslateNow: src=[${src.take(80)}] blank=${src.isBlank()} enabled=${Settings.translateEnabled}")
         if (src.isBlank()) { toast("Nic na preklad"); return }
         statusView.text = "Prekladam..."
         lifecycleScope.launch(Dispatchers.IO) {
             val out = translateText(src)
             withContext(Dispatchers.Main) {
                 if (out != null) { translateText.setText(out); statusView.text = "Prelozene" }
-                else statusView.text = "Preklad zlyhal"
+                else { statusView.text = "Preklad zlyhal"; toast("Preklad zlyhal - pozri log") }
             }
         }
     }
