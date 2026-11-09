@@ -334,6 +334,7 @@ class MainActivity : AppCompatActivity(), EngineHost {
         setContentView(R.layout.activity_main)
         Log.i(TAG, "STEP 2 setContentView OK")
         Settings.init(getExternalFilesDir(null) ?: filesDir)
+        DebugLog.init(getExternalFilesDir(null) ?: filesDir, Settings.debugMode)
         Log.i(TAG, "STEP 3 Settings.init OK")
         Theme.init(getExternalFilesDir(null) ?: filesDir)
         Log.i(TAG, "STEP 4 Theme.init OK")
@@ -440,19 +441,19 @@ class MainActivity : AppCompatActivity(), EngineHost {
     }
 
     private suspend fun translateText(src: String): String? {
-        Log.i("SpeakO-tr", "translateText: src=[${src.take(80)}] engine=${Settings.translateEngine} target=${Settings.translateTarget}")
+        DebugLog.log("TR", "translateText: src=[${src.take(80)}] engine=${Settings.translateEngine} target=${Settings.translateTarget}")
         val out = if (Settings.translateEngine == "mlkit")
             Translate.translateMlkit(src, Settings.asrLang, Settings.translateTarget)
         else if (Settings.translateEngine == "gemma_box")
             Translate.translateGemmaBox(src, Settings.asrLang, Settings.translateTarget)
         else Translate.translateGguf(src, Settings.translateTarget)
-        Log.i("SpeakO-tr", "translateText: vysledok=[${out?.take(80) ?: "NULL"}]")
+        DebugLog.log("TR", "translateText: vysledok=[${out?.take(120) ?: "NULL"}]")
         return out
     }
 
     private fun doTranslateNow() {
         val src = editText.text.toString()
-        Log.i("SpeakO-tr", "doTranslateNow: src=[${src.take(80)}] blank=${src.isBlank()} enabled=${Settings.translateEnabled}")
+        DebugLog.log("TR", "doTranslateNow: src=[${src.take(80)}] blank=${src.isBlank()} enabled=${Settings.translateEnabled}")
         if (src.isBlank()) { toast("Nic na preklad"); return }
         statusView.text = "Prekladam..."
         lifecycleScope.launch(Dispatchers.IO) {
