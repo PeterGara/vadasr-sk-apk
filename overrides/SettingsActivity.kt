@@ -63,7 +63,7 @@ class SettingsActivity : AppCompatActivity() {
         engineSp.adapter = ArrayAdapter(this, R.layout.spinner_item, engines)
         engineSp.setSelection(when (Settings.translateEngine) { "gguf" -> 1; "gemma_box" -> 2; else -> 0 })
 
-        val targets = arrayOf("SK", "EN", "DE", "FR", "ES", "CZ", "PL", "IT")
+        val targets = arrayOf("SK", "EN", "DE", "FR", "ES", "CZ", "PL", "IT", "ZH", "JA", "KO", "TR", "RU", "AR", "VI", "PT", "NL", "SV", "EL", "UK", "RO", "HU")
         targetSp.adapter = ArrayAdapter(this, R.layout.spinner_item, targets)
         targetSp.setSelection(targets.indexOf(Settings.translateTarget.uppercase()).coerceAtLeast(0))
 
