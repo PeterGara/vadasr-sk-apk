@@ -97,6 +97,7 @@ object Translate {
     fun translateGemmaBox(text: String, fromLang: String, toLang: String): String? {
         // pozor: text ide do shell prikazu na boxe - escapneme uvodzovky a spatne lomitka
         val esc = text.replace("\\", "\\\\").replace("\"", "\\\"").replace("`", "\\`").replace("$", "\\$")
+            .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
         val from = if (Settings.asrLang == "multi") "sk" else Settings.asrLang.lowercase()
         val to = toLang.lowercase()
         // preklad z neznámeho zdroja: source_lang_code vynechame (TranslateGemma ho odhadne)
