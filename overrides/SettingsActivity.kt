@@ -56,6 +56,8 @@ class SettingsActivity : AppCompatActivity() {
         swAgc.isChecked = Settings.agc
         val swChirp = findViewById<Switch>(R.id.sw_chirp)
         swChirp.isChecked = Settings.chirpOnTranscribe
+        val swDebug = findViewById<Switch>(R.id.sw_debug)
+        swDebug.isChecked = Settings.debugMode
 
         val engines = arrayOf("ML Kit (offline, jednoduche)", "GGUF (vlastny model/server)", "Gemma box (TranslateGemma, 55 jazykov)")
         engineSp.adapter = ArrayAdapter(this, R.layout.spinner_item, engines)
@@ -93,6 +95,7 @@ class SettingsActivity : AppCompatActivity() {
             Settings.noiseSuppress = swNoise.isChecked
             Settings.agc = swAgc.isChecked
             Settings.chirpOnTranscribe = swChirp.isChecked
+            Settings.debugMode = swDebug.isChecked
             Settings.translateEngine = when (engineSp.selectedItemPosition) { 1 -> "gguf"; 2 -> "gemma_box"; else -> "mlkit" }
             Settings.translateTarget = targetSp.selectedItem.toString().uppercase()
             Settings.operitEnabled = operitSw.isChecked
