@@ -101,7 +101,8 @@ object Translate {
         val from = if (Settings.asrLang == "multi") "sk" else Settings.asrLang.lowercase()
         val to = toLang.lowercase()
         // preklad z neznámeho zdroja: source_lang_code vynechame (TranslateGemma ho odhadne)
-        val ktArgs = if (Settings.asrLang == "multi") "\"target_lang_code\":\"$to\"" else "\"source_lang_code\":\"$from\",\"target_lang_code\":\"$to\""
+        // pozor: ktArgs musi mat escapovane uvodzovky \\\" (backslash+quote pre bash vnútri double-quotes)
+        val ktArgs = if (Settings.asrLang == "multi") "\\\"target_lang_code\\\":\\\"$to\\\"" else "\\\"source_lang_code\\\":\\\"$from\\\",\\\"target_lang_code\\\":\\\"$to\\\""
         val curl = "curl -s --max-time 60 http://127.0.0.1:8080/v1/chat/completions " +
                 "-H \"Content-Type: application/json\" " +
                 "-d \"{\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"$esc\\\"}]," +
