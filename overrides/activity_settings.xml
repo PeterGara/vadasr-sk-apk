@@ -39,6 +39,8 @@
             android:text="Zosilnenie hlasu (AGC)" android:textColor="#FFFFFF" />
         <Switch android:id="@+id/sw_chirp" android:layout_width="match_parent" android:layout_height="wrap_content"
             android:text="Zvuk pri prepise vety (tiché ťuk)" android:textColor="#FFFFFF" />
+        <Switch android:id="@+id/sw_debug" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="Debug logy (zapisuje do debug.log)" android:textColor="#FFFFFF" />
 
         <!-- PREKLAD -->
         <Switch android:id="@+id/sw_translate" android:layout_width="match_parent" android:layout_height="wrap_content"
