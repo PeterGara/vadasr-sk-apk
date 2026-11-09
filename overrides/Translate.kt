@@ -107,6 +107,7 @@ object Translate {
                 "\\\"max_tokens\\\":200,\\\"chat_template_kwargs\\\":{$ktArgs}}\""
         return try {
             // 0. over, ci na boxe bezi llama-server; ak nie, spust ho a pockaj na load
+            DebugLog.log("BOX", "translateGemmaBox: start, from=$from to=$to")
             ensureBoxServer()
             // 1. initialize -> dostaneme session id
             val initBody = JSONObject()
@@ -116,7 +117,8 @@ object Translate {
                     .put("capabilities", JSONObject())
                     .put("clientInfo", JSONObject().put("name", "speako").put("version", "1")))
             val (sid, _) = mcpPost(initBody.toString(), null)
-            if (sid.isNullOrBlank()) { Log.e(TAG, "gemma_box: neziskal som session id"); return null }
+            if (sid.isNullOrBlank()) { DebugLog.log("BOX", "gemma_box: NEDOSTAL som session id"); Log.e(TAG, "gemma_box: neziskal som session id"); return null }
+            DebugLog.log("BOX", "gemma_box: session id OK: $sid")
             // initialized notifikacia
             val notif = JSONObject().put("jsonrpc", "2.0").put("method", "notifications/initialized").toString()
             mcpPost(notif, sid)
@@ -126,9 +128,10 @@ object Translate {
                 .put("params", JSONObject().put("name", "shell")
                     .put("arguments", JSONObject().put("command", curl)))
             val (_, resp) = mcpPost(call.toString(), sid)
+            DebugLog.log("BOX", "gemma_box: MCP odpoved (first 300): ${resp.take(300)}")
             // 3. vytiahni prelozeny text z output
             val out = parseShellResult(resp)
-            if (out == null) Log.e(TAG, "gemma_box: nepodarilo sa vytiahnut preklad z odpovede: " + resp.take(300))
+            DebugLog.log("BOX", "gemma_box: parseShellResult: ${out?.take(120) ?: "NULL"}")
             out
         } catch (e: Exception) { Log.e(TAG, "gemma_box err: $e"); null }
     }
@@ -176,6 +179,7 @@ object Translate {
     }
 
     private fun mcpPost(body: String, sid: String?): Pair<String?, String> {
+        DebugLog.log("MCP", "POST ${Settings.boxMcpUrl} sid=${sid?.take(10) ?: "null"} body=${body.take(80)}")
         val c = URL(Settings.boxMcpUrl).openConnection() as HttpURLConnection
         c.requestMethod = "POST"; c.doOutput = true
         c.connectTimeout = 15000; c.readTimeout = 90000
@@ -184,7 +188,7 @@ object Translate {
         c.setRequestProperty("Accept", "application/json, text/event-stream")
         if (sid != null) c.setRequestProperty("mcp-session-id", sid)
         OutputStreamWriter(c.outputStream, Charsets.UTF_8).use { it.write(body) }
-        if (c.responseCode !in 200..299) { c.disconnect(); return Pair(null, "") }
+        if (c.responseCode !in 200..299) { DebugLog.log("MCP", "HTTP ERROR: ${c.responseCode}"); c.disconnect(); return Pair(null, "") }
         val resp = BufferedReader(InputStreamReader(c.inputStream)).readText()
         // Hlavičky v Jave su case-sensitive - hladame session id case-insensitive
         var sessId: String? = null
